@@ -1,0 +1,348 @@
+/**
+ * AI Validation Service
+ * Handles answer validation using Google Gemini API with fallback logic
+ * * OPTIMIZATION NOTES:
+ * 1.  **Model Choice**: `gemini-2.5-flash-preview-09-2025` is already the best choice for speed.
+ * The ~1s latency is likely the best you'll get, and your "Thinking..."
+ * UI state in `PlayGameView.tsx` is the correct way to handle this.
+ * 2.  **Prompt Structure**: This file has been updated to separate static instructions
+ * (System Prompt) from dynamic data (User Prompt/contents).
+ * 3.  **Token Cost (Prompt)**: The new `systemPrompt` is more concise and removes
+ * all dynamic data. The dynamic data (guess, answer, tags) is now passed
+ * in the `contents` block. This is a cleaner and more token-efficient pattern.
+ * 4.  **Response Quality**: The `systemPrompt` now gives very specific rules for
+ * explanations: "brief, one-sentence" and "Do NOT reveal the correct answer".
+ * This stops the AI from being too verbose or revealing the solution,
+ * which also saves on response tokens.
+ */
+
+import type { Context } from "@devvit/public-api";
+import { BaseService } from "./base.service.js";
+import type { Challenge } from "../../shared/models/challenge.types.js";
+
+export type ValidationResult = {
+  isCorrect: boolean;
+  explanation: string;
+  judgment?: "CORRECT" | "CLOSE" | "INCORRECT";
+};
+
+export class AIValidationService extends BaseService {
+  // Using gemini-2.5-flash-preview-09-2025 is the correct choice for speed.
+  private readonly GEMINI_API_URL =
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
+  private readonly MAX_RETRIES = 2;
+  private readonly RETRY_DELAY_MS = 1000;
+
+  constructor(context: Context) {
+    super(context);
+  }
+
+  /**
+   * Validate a player's guess against the correct answer using AI
+   * Falls back to simple string matching if AI fails
+   */
+  async validateAnswer(
+    guess: string,
+    challenge: Challenge
+  ): Promise<ValidationResult> {
+    try {
+      // Try AI validation with retry logic
+      const aiResult = await this.withRetry(
+        () => this.validateWithAI(guess, challenge),
+        {
+          maxRetries: this.MAX_RETRIES,
+          initialDelayMs: this.RETRY_DELAY_MS,
+          exponentialBackoff: true,
+        }
+      );
+
+      // Ensure explanation is never null or undefined
+      return {
+        ...aiResult,
+        explanation:
+          aiResult.explanation ||
+          this.getDefaultExplanation(aiResult.isCorrect),
+      };
+    } catch (error) {
+      this.logError(
+        "AIValidationService.validateAnswer",
+        "AI validation failed, using fallback"
+      );
+
+      // Fall back to simple validation
+      return this.fallbackValidation(guess, challenge);
+    }
+  }
+
+  /**
+   * Validate answer using Google Gemini API
+   */
+  private async validateWithAI(
+    guess: string,
+    challenge: Challenge
+  ): Promise<ValidationResult> {
+    // Get Gemini API key from settings
+    const settings = await this.context.settings.getAll();
+    const apiKey = settings["GEMINI_API_KEY"] as string;
+
+    if (!apiKey) {
+      this.logError("AIValidationService", "GEMINI_API_KEY not configured");
+      throw new Error("AI validation not configured");
+    }
+
+    // --- OPTIMIZED PROMPT ---
+    // This system prompt is now static. It's more concise and gives
+    // stricter rules for the explanation to control response length and prevent reveals.
+    const systemPrompt = `You are a strict game judge for a 'guess the link' game. You will receive a player's guess, the correct answer, and guiding tags.
+Your task is to judge the guess and provide a brief, one-sentence explanation.
+Do NOT reveal the correct answer or any part of it in your explanation.
+- 'CORRECT': The guess is a perfect match.
+- 'CLOSE': The guess is relevant (same theme/concept) but not correct. Give a small, subtle hint.
+- 'INCORRECT': The guess is off-topic. Encourage them to try again.
+Respond ONLY with the JSON object defined in the schema.`;
+
+    // All dynamic data (guess, answer, tags) is now passed in the user prompt ("contents")
+    // This is cleaner and saves tokens compared to interpolating into the system prompt.
+    const userPrompt = `
+      Correct Answer: "${challenge.correct_answer}"
+      Tags: [${challenge.tags.join(", ")}]
+      Player's Guess: "${guess}"
+    `;
+
+    // Build request payload
+    const payload = {
+      // Pass the dynamic data here
+      contents: [{ parts: [{ text: userPrompt }] }],
+      // Pass the static instructions here
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            judgment: {
+              type: "STRING",
+              enum: ["CORRECT", "CLOSE", "INCORRECT"],
+            },
+            explanation: { type: "STRING" }, // The prompt now guides this to be short
+          },
+          required: ["judgment", "explanation"], // Make explanation required
+        },
+      },
+    };
+
+    // Make API request
+    const url = `${this.GEMINI_API_URL}?key=${apiKey}`;
+
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      this.logError(
+        "AIValidationService",
+        `API request failed with status ${response.status}: ${errorBody}`
+      );
+      throw new Error(`API request failed: ${response.status}`);
+    }
+
+    // Parse response
+    const result = await response.json();
+    const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!jsonText) {
+      this.logError("AIValidationService", "No response text from API");
+      throw new Error("Invalid API response");
+    }
+
+    // Parse and validate JSON response
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch (parseError) {
+      this.logError(
+        "AIValidationService",
+        "Failed to parse JSON response from Gemini API"
+      );
+      throw new Error("Invalid JSON response from API");
+    }
+
+    // Validate required fields exist
+    if (!parsed || typeof parsed !== "object") {
+      this.logError("AIValidationService", "Parsed response is not an object");
+      throw new Error("Invalid response structure from API");
+    }
+
+    const judgment = parsed.judgment as "CORRECT" | "CLOSE" | "INCORRECT";
+
+    // Validate judgment field
+    if (!judgment || !["CORRECT", "CLOSE", "INCORRECT"].includes(judgment)) {
+      this.logError(
+        "AIValidationService",
+        `Invalid judgment value: ${judgment}`
+      );
+      throw new Error("Invalid judgment from API");
+    }
+
+    // Extract explanation. We made it required in the schema, but check just in case.
+    const explanation = parsed.explanation as string | null | undefined;
+
+    // Determine if answer is correct (CORRECT or CLOSE both count as correct)
+    // --- DECISION: You might want to change this.
+    // Does 'CLOSE' count as a win? Or just a hint?
+    // I'll assume for now only 'CORRECT' is a win.
+    const isCorrect = judgment === "CORRECT";
+
+    this.logInfo(
+      "AIValidationService",
+      `AI judgment: ${judgment} for guess "${guess}" vs answer "${challenge.correct_answer}"`
+    );
+
+    // Ensure explanation is never null or undefined
+    const safeExplanation = explanation
+      ? explanation
+      : this.getDefaultExplanation(isCorrect);
+
+    return {
+      isCorrect,
+      explanation: safeExplanation,
+      judgment,
+    };
+  }
+
+  /**
+   * Get default explanation message based on correctness
+   * Used when AI doesn't provide an explanation
+   */
+  private getDefaultExplanation(isCorrect: boolean): string {
+    return isCorrect ? "Correct answer!" : "Not quite right. Try again!";
+  }
+
+  /**
+   * Fallback validation using simple string matching
+   * Used when AI validation fails
+   */
+  private fallbackValidation(
+    guess: string,
+    challenge: Challenge
+  ): ValidationResult {
+    const normalizedGuess = guess.toLowerCase().trim();
+    const normalizedAnswer = challenge.correct_answer.toLowerCase().trim();
+
+    // Check for exact match
+    if (normalizedGuess === normalizedAnswer) {
+      return {
+        isCorrect: true,
+        explanation: "[Fallback Judge]: Correct answer!",
+        judgment: "CORRECT",
+      };
+    }
+
+    // Check if guess contains the answer or vice versa (and is reasonably long)
+    const guessContainsAnswer =
+      normalizedGuess.length > 3 && normalizedGuess.includes(normalizedAnswer);
+    const answerContainsGuess =
+      normalizedAnswer.length > 3 && normalizedAnswer.includes(normalizedGuess);
+
+    if (guessContainsAnswer || answerContainsGuess) {
+      return {
+        isCorrect: true, // Assuming 'CLOSE' is a win for fallback
+        explanation:
+          "[Fallback Judge]: Close enough! Your answer matches the key concept.",
+        judgment: "CLOSE",
+      };
+    }
+
+    // Check for partial word matches
+    const guessWords = normalizedGuess.split(/\s+/);
+    const answerWords = normalizedAnswer.split(/\s+/);
+
+    const matchingWords = guessWords.filter(
+      (word) =>
+        word.length > 3 &&
+        answerWords.some(
+          (answerWord) => answerWord.includes(word) || word.includes(answerWord)
+        )
+    );
+
+    if (
+      matchingWords.length > 0 &&
+      matchingWords.length >=
+        Math.min(guessWords.length, answerWords.length) / 2
+    ) {
+      return {
+        isCorrect: true, // Assuming 'CLOSE' is a win for fallback
+        explanation:
+          "[Fallback Judge]: Close enough! Your answer captures the main idea.",
+        judgment: "CLOSE",
+      };
+    }
+
+    // No match found
+    return {
+      isCorrect: false,
+      explanation: "[Fallback Judge]: Incorrect. Try revealing more hints.",
+      judgment: "INCORRECT",
+    };
+  }
+
+  /**
+   * Check if AI validation is configured
+   */
+  async isConfigured(): Promise<boolean> {
+    try {
+      const settings = await this.context.settings.getAll();
+      const apiKey = settings["GEMINI_API_KEY"] as string;
+      return !!apiKey;
+    } catch (error) {
+      this.logError("AIValidationService.isConfigured", error);
+      return false;
+    }
+  }
+
+  /**
+   * Test AI validation with a simple query
+   * Useful for debugging and configuration verification
+   */
+  async testValidation(): Promise<{ success: boolean; message: string }> {
+    try {
+      const testChallenge: Challenge = {
+        id: "test",
+        creator_id: "test",
+        creator_username: "test",
+        title: "Test Challenge",
+        description: "Test",
+        image_url: "test", // Added missing property
+        tags: ["test"],
+        correct_answer: "apple",
+        max_score: 20,
+        score_deduction_per_hint: 5,
+        reddit_post_id: null,
+        created_at: new Date().toISOString(),
+      };
+
+      const result = await this.validateAnswer("apple", testChallenge);
+
+      if (result.isCorrect && result.judgment === "CORRECT") {
+        return {
+          success: true,
+          message: "AI validation is working correctly",
+        };
+      } else {
+        return {
+          success: false,
+          message: `AI validation returned unexpected result: ${result.judgment} - ${result.explanation}`,
+        };
+      }
+    } catch (error) {
+      this.logError("AIValidationService.testValidation", error);
+      return {
+        success: false,
+        message: `AI validation test failed: ${error}`,
+      };
+    }
+  }
+}

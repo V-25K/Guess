@@ -1,0 +1,17 @@
+{
+  "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
+  "name": "guess-the-1ink",
+  "blocks": {
+    "entry": "src/client/main.tsx",
+    "triggers": ["onCommentSubmit"]
+  },
+  "permissions": {
+    "http": {
+      "domains": [
+        "generativelanguage.googleapis.com",
+        "jqgithkiinvgcpskwado.supabase.co"
+      ]
+    },
+    "redis": true
+  }
+}
