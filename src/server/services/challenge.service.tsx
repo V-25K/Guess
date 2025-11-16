@@ -1,4 +1,4 @@
-/**
+ /**
  * Challenge Service
  * Handles all business logic related to challenge creation, retrieval, and management
  */
@@ -115,34 +115,8 @@ export class ChallengeService extends BaseService {
           return null;
         }
         
-        // Create Reddit post for the challenge
-        const postId = await this.createRedditPost(createdChallenge);
-        
-        // Update challenge with post ID if post was created successfully
-        if (postId) {
-          const updateSuccess = await this.challengeRepo.update(createdChallenge.id, { reddit_post_id: postId });
-          
-          if (updateSuccess) {
-            // Only update in-memory object if database update succeeded
-            createdChallenge.reddit_post_id = postId;
-            this.logInfo(
-              'ChallengeService',
-              `Reddit post created for challenge ${createdChallenge.id}: ${postId}`
-            );
-          } else {
-            this.logError(
-              'ChallengeService.createChallenge',
-              `Failed to update challenge ${createdChallenge.id} with post ID ${postId}`
-            );
-            // Don't set reddit_post_id on the object to match database state
-          }
-        } else {
-          this.logError(
-            'ChallengeService.createChallenge',
-            `Failed to create Reddit post for challenge ${createdChallenge.id}`
-          );
-          // Continue anyway - challenge is still valid without a post
-        }
+        // Note: Reddit post creation is handled separately to avoid ServerCallRequired errors
+        // The post will be created by the client after successful challenge creation
         
         // Award creation points and update statistics
         const reward = getCreationReward();
@@ -195,6 +169,44 @@ export class ChallengeService extends BaseService {
 
   /**
    * Create a Reddit post for a challenge
+   * This should be called from a proper async context (not from within form handlers)
+   * Returns the post ID if successful, null otherwise
+   */
+  async createRedditPostForChallenge(challengeId: string): Promise<string | null> {
+    return this.withErrorHandling(
+      async () => {
+        const challenge = await this.challengeRepo.findById(challengeId);
+        if (!challenge) {
+          this.logError('ChallengeService.createRedditPostForChallenge', `Challenge ${challengeId} not found`);
+          return null;
+        }
+        
+        const postId = await this.createRedditPost(challenge);
+        
+        if (postId) {
+          const updateSuccess = await this.challengeRepo.update(challenge.id, { reddit_post_id: postId });
+          
+          if (updateSuccess) {
+            this.logInfo(
+              'ChallengeService',
+              `Reddit post created for challenge ${challenge.id}: ${postId}`
+            );
+          } else {
+            this.logError(
+              'ChallengeService.createRedditPostForChallenge',
+              `Failed to update challenge ${challenge.id} with post ID ${postId}`
+            );
+          }
+        }
+        
+        return postId;
+      },
+      'Failed to create Reddit post for challenge'
+    );
+  }
+
+  /**
+   * Create a Reddit post for a challenge (internal helper)
    * Returns the post ID if successful, null otherwise
    */
   private async createRedditPost(challenge: Challenge): Promise<string | null> {
@@ -210,11 +222,15 @@ export class ChallengeService extends BaseService {
       // Format post title
       const postTitle = this.formatPostTitle(challenge);
       
-      // Submit post to Reddit with preview
+      // Submit post to Reddit with preview and challenge ID in postData
       const post = await this.context.reddit.submitPost({
         subredditName: subredditName,
         title: postTitle,
         preview: this.formatPostPreview(challenge),
+        postData: {
+          challengeId: challenge.id,
+          openDirectly: true,
+        },
       });
       
       return post.id;
@@ -229,112 +245,38 @@ export class ChallengeService extends BaseService {
    * Creates an engaging title with emojis and challenge info
    */
   private formatPostTitle(challenge: Challenge): string {
-    // Add emoji based on first tag
-    const tagEmojis: Record<string, string> = {
-      anime: '🎌',
-      general: '🎯',
-      sport: '⚽',
-      movies: '🎬',
-      music: '🎵',
-      gaming: '🎮',
-      nature: '🌿',
-      food: '🍕',
-      technology: '💻',
-      art: '🎨',
-    };
-    
-    const emoji = challenge.tags[0] ? (tagEmojis[challenge.tags[0]] || '🎯') : '🎯';
     
     // Format: "🎯 [Challenge Title] by u/username"
-    return `${emoji} ${challenge.title} by u/${challenge.creator_username}`;
+    return `$${challenge.title}`;
   }
 
   /**
    * Format the Reddit post preview
-   * Creates a preview block showing challenge details
+   * Creates a simple loading preview - the actual challenge opens directly
    */
   private formatPostPreview(challenge: Challenge): JSX.Element {
-    const imageCount = challenge.image_url.split(',').length;
-    const tagText = challenge.tags.join(', ');
-    
     return (
-      <vstack padding="medium" gap="medium" backgroundColor="#F6F7F8">
-        {/* Header */}
-        <vstack gap="small">
-          <text size="xxlarge" weight="bold" color="#FF4500">
-            🎮 New Challenge Available!
-          </text>
-          <text size="large" weight="bold" color="#1c1c1c">
-            {challenge.title}
-          </text>
-        </vstack>
-        
-        {/* Challenge info */}
-        <vstack gap="small" padding="medium" backgroundColor="#FFFFFF" cornerRadius="medium">
-          <hstack gap="small">
-            <text size="medium" weight="bold" color="#0079D3">
-              👤 Creator:
-            </text>
-            <text size="medium" color="#1c1c1c">
-              u/{challenge.creator_username}
-            </text>
-          </hstack>
-          
-          <hstack gap="small">
-            <text size="medium" weight="bold" color="#0079D3">
-              🖼️ Images:
-            </text>
-            <text size="medium" color="#1c1c1c">
-              {imageCount} hints to reveal
-            </text>
-          </hstack>
-          
-          <hstack gap="small">
-            <text size="medium" weight="bold" color="#0079D3">
-              🏷️ Tags:
-            </text>
-            <text size="medium" color="#1c1c1c">
-              {tagText}
-            </text>
-          </hstack>
-          
-          {challenge.description && (
-            <vstack gap="small">
-              <text size="medium" weight="bold" color="#0079D3">
-                📝 Description:
-              </text>
-              <text size="small" color="#666666">
-                {challenge.description}
-              </text>
-            </vstack>
-          )}
-        </vstack>
-        
-        {/* Rewards info */}
-        <vstack gap="small" padding="medium" backgroundColor="#E8F5E9" cornerRadius="medium">
-          <text size="medium" weight="bold" color="#2E7D32">
-            💰 Rewards
-          </text>
-          <text size="small" color="#1B5E20">
-            • Solve with 1 image: 20 points, 10 exp
-          </text>
-          <text size="small" color="#1B5E20">
-            • Solve with 2+ images: 10 points, 5 exp
-          </text>
-          <text size="small" color="#1B5E20">
-            • Comment on this post: Creator gets 1 point, 1 exp
-          </text>
-        </vstack>
-        
-        {/* Call to action */}
-        <vstack alignment="center middle" padding="medium">
-          <text size="large" weight="bold" color="#FF4500">
-            🎯 Click to Play!
-          </text>
-          <text size="small" color="#878a8c">
-            Tap this post to start the challenge
-          </text>
-        </vstack>
+      <vstack 
+        width="100%" 
+        height="100%" 
+        alignment="center middle" 
+        backgroundColor="#F6F7F8"
+        padding="large"
+        gap="medium"
+      >
+        <text size="xxlarge" weight="bold" color="#FF4500">
+          🎮 Guess The Link
+        </text>
+        <text size="large" weight="bold" color="#1c1c1c" alignment="center">
+          {challenge.title}
+        </text>
+        <text size="medium" color="#878a8c" alignment="center">
+          by u/{challenge.creator_username}
+        </text>
+        <spacer size="medium" />
+        <text size="small" color="#666666" alignment="center">
+          Loading challenge...
+        </text>
       </vstack>
     );
   }

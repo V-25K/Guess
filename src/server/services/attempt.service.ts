@@ -6,6 +6,7 @@
 import type { Context } from '@devvit/public-api';
 import { BaseService } from './base.service.js';
 import { AttemptRepository } from '../repositories/attempt.repository.js';
+import { ChallengeRepository } from '../repositories/challenge.repository.js';
 import { UserService } from './user.service.js';
 import { calculateChallengeReward } from '../../shared/utils/reward-calculator.js';
 import type { ChallengeAttempt, ChallengeAttemptCreate, AttemptResult } from '../../shared/models/attempt.types.js';
@@ -14,9 +15,14 @@ export class AttemptService extends BaseService {
   constructor(
     context: Context,
     private attemptRepo: AttemptRepository,
-    private userService: UserService
+    private userService: UserService,
+    private challengeRepo?: ChallengeRepository
   ) {
     super(context);
+    // Initialize challengeRepo if not provided
+    if (!this.challengeRepo) {
+      this.challengeRepo = new ChallengeRepository(context);
+    }
   }
 
   /**
@@ -75,6 +81,17 @@ export class AttemptService extends BaseService {
     imagesRevealed: number
   ): Promise<AttemptResult> {
     try {
+      // Check if user is the creator of this challenge
+      const challenge = await this.challengeRepo!.findById(challengeId);
+      
+      if (challenge && challenge.creator_id === userId) {
+        this.logWarning('AttemptService.submitGuess', `User ${userId} attempted to answer their own challenge ${challengeId}`);
+        return {
+          isCorrect: false,
+          explanation: "You can't answer your own challenge!",
+        };
+      }
+      
       // Get or create attempt record
       let attempt = await this.attemptRepo.findByUserAndChallenge(userId, challengeId);
       

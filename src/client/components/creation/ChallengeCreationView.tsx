@@ -137,7 +137,7 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 const minScore = 10;
                 const deductiblePoints = maxScore - minScore; // 15
                 const numReveals = numImages - 1; // First image is shown by default
-                const scoreDeductionPerHint = deductiblePoints / numReveals;
+                const scoreDeductionPerHint = deductiblePoints / numReveals; // Allow decimal values
                 
                 const challenge = await challengeService.createChallenge({
                     creator_id: userId,
@@ -152,7 +152,15 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 });
                 
                 if (challenge) {
-                    context.ui.showToast('✅ Challenge created! +5 pts, +5 exp');
+                    // Create Reddit post for the challenge (in proper async context)
+                    const postId = await challengeService.createRedditPostForChallenge(challenge.id);
+                    
+                    if (postId) {
+                        context.ui.showToast('✅ Challenge created with post! +5 pts, +5 exp');
+                    } else {
+                        context.ui.showToast('✅ Challenge created! +5 pts, +5 exp (post creation pending)');
+                    }
+                    
                     onSuccess(challenge);
                 } else {
                     context.ui.showToast('❌ Failed to create challenge');

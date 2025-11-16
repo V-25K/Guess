@@ -12,6 +12,7 @@ import { AIValidationService } from '../../../server/services/ai-validation.serv
 import { AttemptService } from '../../../server/services/attempt.service.js';
 import { UserService } from '../../../server/services/user.service.js';
 import { AttemptRepository } from '../../../server/repositories/attempt.repository.js';
+import { ChallengeRepository } from '../../../server/repositories/challenge.repository.js';
 import { UserRepository } from '../../../server/repositories/user.repository.js';
 
 export interface GameplayViewWrapperProps {
@@ -71,9 +72,10 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
       try {
         const aiValidationService = new AIValidationService(context);
         const attemptRepo = new AttemptRepository(context);
+        const challengeRepo = new ChallengeRepository(context);
         const userRepo = new UserRepository(context);
         const userService = new UserService(context, userRepo);
-        const attemptService = new AttemptService(context, attemptRepo, userService);
+        const attemptService = new AttemptService(context, attemptRepo, userService, challengeRepo);
 
         const validationResult = await aiValidationService.validateAnswer(answer, currentChallenge);
 
@@ -111,8 +113,16 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
   );
 
   const handleOpenAnswerForm = () => {
+    // Check if user is the creator
+    if (currentChallenge && userId === currentChallenge.creator_id) {
+      context.ui.showToast("❌ You can't answer your own challenge!");
+      return;
+    }
     context.ui.showForm(answerForm);
   };
+  
+  // Check if current user is the creator
+  const isCreator = currentChallenge ? userId === currentChallenge.creator_id : false;
 
   if (!currentChallenge) {
     return (
@@ -147,6 +157,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
       onSubmitAnswer={handleOpenAnswerForm}
       onNextChallenge={onNextChallenge}
       onBackToMenu={onBackToMenu}
+      isCreator={isCreator}
     />
   );
 };

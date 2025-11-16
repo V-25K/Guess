@@ -5,9 +5,12 @@
  */
 
 /**
- * Rate limit duration in milliseconds (24 hours)
+ * Rate limit duration in milliseconds
+ * TODO: Change back to 24 hours for production (24 * 60 * 60 * 1000)
+ * Currently set to 1 minute for testing
  */
-export const RATE_LIMIT_DURATION_MS = 24 * 60 * 60 * 1000;
+export const RATE_LIMIT_DURATION_MS = 1 * 60 * 1000; // 1 minute for testing
+// export const RATE_LIMIT_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours for production
 
 /**
  * Result of checking if a user can create a challenge

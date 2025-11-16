@@ -3,7 +3,7 @@
  * Main gameplay view for playing challenges
  */
 
-import { Devvit } from '@devvit/public-api';
+import { Devvit, useState } from '@devvit/public-api';
 import type { GameChallenge } from '../../../shared/models/index.js';
 
 export interface PlayGameViewProps {
@@ -18,6 +18,7 @@ export interface PlayGameViewProps {
     onSubmitAnswer: () => void;
     onNextChallenge: () => void;
     onBackToMenu: () => void;
+    isCreator: boolean;
 }
 
 /**
@@ -29,7 +30,8 @@ const ImageCell: Devvit.BlockComponent<{
     sizePx: number;
     isGameOver: boolean;
     onReveal: (index: number) => void;
-}> = ({ image, index, sizePx, isGameOver, onReveal }) => (
+    onEnlarge: (index: number) => void;
+}> = ({ image, index, sizePx, isGameOver, onReveal, onEnlarge }) => (
     <vstack 
         width={`${sizePx}px`}
         height={`${sizePx}px`}
@@ -39,7 +41,11 @@ const ImageCell: Devvit.BlockComponent<{
         border="thick"
         borderColor={image.isRevealed ? "#4CAF50" : "#BDBDBD"}
         onPress={() => {
-            if (!image.isRevealed && !isGameOver) {
+            if (image.isRevealed) {
+                // If revealed, enlarge the image
+                onEnlarge(index);
+            } else if (!isGameOver) {
+                // If not revealed and game not over, reveal it
                 onReveal(index);
             }
         }}
@@ -66,20 +72,21 @@ const ImageGrid: Devvit.BlockComponent<{
     images: any[];
     isGameOver: boolean;
     onReveal: (index: number) => void;
-}> = ({ images, isGameOver, onReveal }) => {
+    onEnlarge: (index: number) => void;
+}> = ({ images, isGameOver, onReveal, onEnlarge }) => {
     const imageCount = images.length;
 
     if (imageCount === 5) {
         return (
             <vstack gap="small" width="100%" alignment="center middle">
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[0]} index={0} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} />
-                    <ImageCell image={images[1]} index={1} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} />
-                    <ImageCell image={images[2]} index={2} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} />
+                    <ImageCell image={images[0]} index={0} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[1]} index={1} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[2]} index={2} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
                 </hstack>
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[3]} index={3} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} />
-                    <ImageCell image={images[4]} index={4} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} />
+                    <ImageCell image={images[3]} index={3} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[4]} index={4} sizePx={80} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
                 </hstack>
             </vstack>
         );
@@ -87,12 +94,12 @@ const ImageGrid: Devvit.BlockComponent<{
         return (
             <vstack gap="small" width="100%" alignment="center middle">
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[0]} index={0} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} />
-                    <ImageCell image={images[1]} index={1} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} />
+                    <ImageCell image={images[0]} index={0} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[1]} index={1} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
                 </hstack>
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[2]} index={2} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} />
-                    <ImageCell image={images[3]} index={3} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} />
+                    <ImageCell image={images[2]} index={2} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[3]} index={3} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
                 </hstack>
             </vstack>
         );
@@ -100,25 +107,25 @@ const ImageGrid: Devvit.BlockComponent<{
         return (
             <vstack gap="small" width="100%" alignment="center middle">
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[0]} index={0} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} />
-                    <ImageCell image={images[1]} index={1} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} />
+                    <ImageCell image={images[0]} index={0} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[1]} index={1} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
                 </hstack>
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[2]} index={2} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} />
+                    <ImageCell image={images[2]} index={2} sizePx={90} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
                 </hstack>
             </vstack>
         );
     } else if (imageCount === 2) {
         return (
             <hstack gap="small" width="100%" alignment="center middle">
-                <ImageCell image={images[0]} index={0} sizePx={110} isGameOver={isGameOver} onReveal={onReveal} />
-                <ImageCell image={images[1]} index={1} sizePx={110} isGameOver={isGameOver} onReveal={onReveal} />
+                <ImageCell image={images[0]} index={0} sizePx={110} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
+                <ImageCell image={images[1]} index={1} sizePx={110} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
             </hstack>
         );
     } else {
         return (
             <hstack gap="small" width="100%" alignment="center middle">
-                <ImageCell image={images[0]} index={0} sizePx={140} isGameOver={isGameOver} onReveal={onReveal} />
+                <ImageCell image={images[0]} index={0} sizePx={140} isGameOver={isGameOver} onReveal={onReveal} onEnlarge={onEnlarge} />
             </hstack>
         );
     }
@@ -134,8 +141,50 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
     onSubmitAnswer,
     onNextChallenge,
     onBackToMenu,
+    isCreator,
 }) => {
     const isThinking = gameState.message === '🤔 Thinking...';
+    const [enlargedImageIndex, setEnlargedImageIndex] = useState<number | null>(null);
+    
+    const handleEnlargeImage = (index: number) => {
+        setEnlargedImageIndex(index);
+    };
+    
+    const handleCloseEnlarged = () => {
+        setEnlargedImageIndex(null);
+    };
+    
+    // If an image is enlarged, show the overlay
+    if (enlargedImageIndex !== null) {
+        const enlargedImage = challenge.images[enlargedImageIndex];
+        return (
+            <vstack 
+                width="100%" 
+                height="100%" 
+                backgroundColor="rgba(0, 0, 0, 0.9)"
+                alignment="center middle"
+                onPress={handleCloseEnlarged}
+                padding="medium"
+                gap="medium"
+            >
+                <image 
+                    url={enlargedImage.url}
+                    imageWidth={300}
+                    imageHeight={300}
+                    width="300px"
+                    height="300px"
+                    resizeMode="fit"
+                />
+                <button 
+                    onPress={handleCloseEnlarged}
+                    appearance="secondary"
+                    size="medium"
+                >
+                    ✕ Close
+                </button>
+            </vstack>
+        );
+    }
     
     return (
         <vstack padding="small" gap="small" width="100%" height="100%" backgroundColor="#F6F7F8">
@@ -191,7 +240,8 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
             <ImageGrid 
                 images={challenge.images} 
                 isGameOver={gameState.isGameOver} 
-                onReveal={onRevealImage} 
+                onReveal={onRevealImage}
+                onEnlarge={handleEnlargeImage}
             />
 
             {/* Instruction text */}
@@ -199,86 +249,113 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                 <text size="xsmall" color="#878a8c" alignment="center">Tap to reveal</text>
             )}
 
-            {/* AI Judgment Message - Full width */}
+            {/* AI Judgment Message - Flexible height, positioned at bottom-left with avatar */}
             <hstack 
                 width="100%"
-                padding="small" 
-                backgroundColor={
-                    isThinking
-                        ? "#FFF4E6" 
-                        : gameState.message === "..." 
-                            ? "#F6F7F8" 
-                            : gameState.isGameOver 
-                                ? "#E8F5E9" 
-                                : "#FFEBEE"
-                }
-                cornerRadius="medium"
-                border="thick"
-                borderColor={
-                    isThinking
-                        ? "#FF8C00" 
-                        : gameState.message === "..." 
-                            ? "#E0E0E0" 
-                            : gameState.isGameOver 
-                                ? "#4CAF50" 
-                                : "#FF4500"
-                }
-                alignment="middle"
                 gap="small"
+                alignment="start top"
             >
-                {/* Creator Avatar */}
+                {/* Creator Avatar - Large on bottom-left */}
                 {challenge.creator_avatar_url ? (
                     <image 
                         url={challenge.creator_avatar_url}
-                        imageWidth={24}
-                        imageHeight={24}
-                        width="24px"
-                        height="24px"
+                        imageWidth={80}
+                        imageHeight={80}
+                        width="80px"
+                        height="80px"
                         resizeMode="cover"
                     />
                 ) : (
                     <vstack 
-                        width="24px" 
-                        height="24px" 
+                        width="80px" 
+                        height="80px" 
                         backgroundColor="#FF4500"
                         cornerRadius="full"
                         alignment="center middle"
                     >
-                        <text size="small" weight="bold" color="#FFFFFF">
+                        <text size="xxlarge" weight="bold" color="#FFFFFF">
                             {challenge.creator_username.charAt(0).toUpperCase()}
                         </text>
                     </vstack>
                 )}
                 
-                {/* AI Message */}
-                <text 
-                    size="small" 
-                    weight="bold" 
-                    color={
+                {/* AI Message - Flexible vertical area */}
+                <vstack 
+                    grow
+                    padding="medium" 
+                    backgroundColor={
+                        isThinking
+                            ? "#FFF4E6" 
+                            : gameState.message === "..." 
+                                ? "#F6F7F8" 
+                                : gameState.isGameOver 
+                                    ? "#E8F5E9" 
+                                    : "#FFEBEE"
+                    }
+                    cornerRadius="medium"
+                    border="thick"
+                    borderColor={
                         isThinking
                             ? "#FF8C00" 
                             : gameState.message === "..." 
-                                ? "#878a8c" 
-                            : gameState.isGameOver 
-                                    ? "#2E7D32" 
-                                    : "#D32F2F"
+                                ? "#E0E0E0" 
+                                : gameState.isGameOver 
+                                    ? "#4CAF50" 
+                                    : "#FF4500"
                     }
+                    alignment="start top"
+                    gap="small"
+                    minHeight="80px"
                 >
-                    {gameState.message}
-                </text>
+                    <text 
+                        size="medium" 
+                        weight="bold" 
+                        color={
+                            isThinking
+                                ? "#FF8C00" 
+                                : gameState.message === "..." 
+                                    ? "#878a8c" 
+                                : gameState.isGameOver 
+                                        ? "#2E7D32" 
+                                        : "#D32F2F"
+                        }
+                        wrap
+                    >
+                        {gameState.message}
+                    </text>
+                </vstack>
             </hstack>
 
-            {/* Answer Button */}
+            {/* Answer Button or Creator Message */}
             {!gameState.isGameOver && (
-                <button 
-                    onPress={onSubmitAnswer}
-                    appearance="primary"
-                    size="medium"
-                    width="100%"
-                    disabled={isThinking}
-                >
-                    {isThinking ? '⏳ Checking...' : '💬 Submit Answer'}
-                </button>
+                <hstack width="100%" alignment="center middle">
+                    {isCreator ? (
+                        <vstack 
+                            padding="medium" 
+                            backgroundColor="#FFF4E6"
+                            cornerRadius="medium"
+                            border="thick"
+                            borderColor="#FF8C00"
+                            alignment="center middle"
+                        >
+                            <text size="medium" weight="bold" color="#FF8C00">
+                                🎨 This is your challenge!
+                            </text>
+                            <text size="small" color="#666666">
+                                You can't answer your own challenge
+                            </text>
+                        </vstack>
+                    ) : (
+                        <button 
+                            onPress={onSubmitAnswer}
+                            appearance="primary"
+                            size="medium"
+                            disabled={isThinking}
+                        >
+                            {isThinking ? '⏳ Checking...' : '✍️ Click to Answer'}
+                        </button>
+                    )}
+                </hstack>
             )}
 
             {/* Game Over Actions */}

@@ -50,7 +50,7 @@ function initializeServices(context: Context | any) {
     
     const userService = new UserService(context, userRepo);
     const challengeService = new ChallengeService(context, challengeRepo, userService);
-    const attemptService = new AttemptService(context, attemptRepo, userService);
+    const attemptService = new AttemptService(context, attemptRepo, userService, challengeRepo);
     const aiValidationService = new AIValidationService(context);
     const leaderboardService = new LeaderboardService(context, userRepo);
     const commentService = new CommentService(context, commentRepo, userService);
@@ -79,6 +79,10 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     
     const userId = currentUser?.id || 'anonymous';
     const username = currentUser?.username || 'anonymous';
+    
+    // Check if this post has a specific challenge to open
+    const postData = context.postData as { challengeId?: string; openDirectly?: boolean } | undefined;
+    const shouldOpenChallenge = postData?.openDirectly && postData?.challengeId;
     
     const { currentView, navigateTo } = useNavigation('loading');
     
@@ -135,7 +139,20 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
         finally: (data) => {
             if (data && data.length > 0) {
                 setChallenges(data);
+                
+                // If this post should open a specific challenge, find and set it
+                if (shouldOpenChallenge && postData?.challengeId) {
+                    const challengeIndex = data.findIndex(c => c.id === postData.challengeId);
+                    if (challengeIndex !== -1) {
+                        setCurrentChallengeIndex(challengeIndex);
+                        resetGame(data[challengeIndex]);
+                        navigateTo('gameplay');
+                        console.log(`[Main] Opening challenge directly: ${postData.challengeId}`);
+                        return;
+                    }
+                }
             }
+            
             if (currentView === 'loading') {
                 navigateTo('menu');
             }
