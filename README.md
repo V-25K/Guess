@@ -4,31 +4,39 @@ A Reddit game where players guess the common link between progressively revealed
 
 ## Overview
 
-Guess The Link is an interactive puzzle game where players are presented with multiple hidden images. The goal is to identify the common theme or connection between all images before revealing them all. Each image revealed deducts points from your score, so the challenge is to guess correctly with as few hints as possible.
+Guess The Link is an interactive puzzle game where players are presented with multiple images displayed immediately. The goal is to identify the common theme or connection between all images. You have up to 10 attempts to guess correctly, with your score decreasing with each attempt, so the challenge is to deduce the answer quickly and accurately.
 
 ## Gameplay
 
 ### How to Play
 
 1. **Start a Challenge**: Select a challenge from the available list
-2. **Reveal Images**: Click on hidden images to reveal them one by one
-3. **Guess the Link**: Submit your answer for what connects all the images
+2. **View All Images**: All images are displayed immediately - no need to reveal them
+3. **Guess the Link**: Submit your answer for what connects all the images (up to 10 attempts)
 4. **AI Validation**: Google Gemini AI judges if your answer is correct
-5. **Earn Rewards**: Get points and experience based on your performance
+5. **Earn Rewards**: Get points and experience based on how many attempts you needed
 
 ### Scoring System
 
-- **Starting Score**: 25 points per challenge
-- **Deduction**: 5 points per image revealed (after the first)
-- **Minimum Score**: 0 points (can't go negative)
+- **Maximum Score**: 30 points (correct on 1st attempt)
+- **Minimum Score**: 10 points (correct on 10th attempt)
+- **Deduction**: 2 points per attempt (after bonuses)
+- **Attempt Limit**: 10 attempts maximum per challenge
 - **Experience**: Points earned = Experience gained (1:1 ratio)
 
+**Scoring Formula:**
+- Base Score: 28 points
+- Deduction: (attempts - 1) × 2 points
+- Bonus: +2 points for 1st attempt, +1 point for 2nd attempt
+
 **Example Scoring:**
-- 1 image revealed: 25 points + 25 exp
-- 2 images revealed: 20 points + 20 exp
-- 3 images revealed: 15 points + 15 exp
-- 4 images revealed: 10 points + 10 exp
-- 5 images revealed: 5 points + 5 exp
+- 1st attempt (correct): 30 points + 30 exp (28 - 0 + 2 bonus)
+- 2nd attempt (correct): 27 points + 27 exp (28 - 2 + 1 bonus)
+- 3rd attempt (correct): 24 points + 24 exp (28 - 4)
+- 4th attempt (correct): 22 points + 22 exp (28 - 6)
+- 5th attempt (correct): 20 points + 20 exp (28 - 8)
+- 10th attempt (correct): 10 points + 10 exp (28 - 18)
+- Failed (10 incorrect): 0 points + 0 exp
 
 ### AI Answer Validation
 
@@ -43,12 +51,12 @@ The game uses Google Gemini AI to validate answers with intelligent matching:
 ### Points & Experience
 
 **Points** are earned from:
-- Solving challenges (5-25 points based on images revealed)
+- Solving challenges (10-30 points based on attempts needed)
 - Creating challenges (+5 points)
 - Receiving comments on your challenges (+1 point per comment)
 
 **Experience (EXP)** is gained at a 1:1 ratio with points:
-- Solving challenges (5-25 exp based on images revealed)
+- Solving challenges (10-30 exp based on attempts needed)
 - Creating challenges (+5 exp)
 - Receiving comments on your challenges (+1 exp per comment)
 
@@ -183,29 +191,42 @@ src/
 ### Challenge Flow
 
 1. User selects a challenge from the list
-2. First image is revealed automatically (no point deduction)
-3. User can reveal additional images (5 points deducted each)
-4. User submits a guess
-5. AI validates the answer
-6. Points and experience awarded based on performance
-7. User can move to next challenge
+2. All images are displayed immediately
+3. User submits a guess (up to 10 attempts allowed)
+4. AI validates the answer and provides feedback
+5. If incorrect, user can try again (score decreases with each attempt)
+6. If correct, points and experience awarded based on attempts needed
+7. If 10 incorrect attempts, game over with 0 points
+8. User can move to next challenge
 
 ### Reward Calculation
 
 ```typescript
-// Calculate points based on images revealed
-const points = Math.max(0, 25 - (images_revealed - 1) × 5);
-
-// Experience equals points (1:1 ratio)
-const exp = points;
+// Calculate points based on attempts made
+function calculateAttemptReward(attemptsMade: number, isSolved: boolean): Reward {
+  if (!isSolved) return { points: 0, exp: 0 };
+  
+  // Base calculation: 28 - ((attempts - 1) × 2)
+  let points = 28 - ((attemptsMade - 1) * 2);
+  
+  // Add bonuses for first two attempts
+  if (attemptsMade === 1) {
+    points += 2; // 30 points total
+  } else if (attemptsMade === 2) {
+    points += 1; // 27 points total
+  }
+  
+  const exp = points; // 1:1 ratio
+  return { points, exp };
+}
 
 // Examples:
-// 1 image revealed: 25 points, 25 exp
-// 2 images revealed: 20 points, 20 exp
-// 3 images revealed: 15 points, 15 exp
-// 4 images revealed: 10 points, 10 exp
-// 5 images revealed: 5 points, 5 exp
-// Failed attempt: 0 points, 0 exp
+// 1st attempt: 30 points, 30 exp
+// 2nd attempt: 27 points, 27 exp
+// 3rd attempt: 24 points, 24 exp
+// 5th attempt: 20 points, 20 exp
+// 10th attempt: 10 points, 10 exp
+// Failed (10 incorrect): 0 points, 0 exp
 ```
 
 ### Level Progression
@@ -263,9 +284,11 @@ function getExpForLevel(level: number): number {
   user_id: string
   challenge_id: string
   is_solved: boolean
-  images_revealed: number
+  attempts_made: number
+  game_over: boolean
   points_earned: number
-  exp_earned: number
+  experience_earned: number
+  attempted_at: timestamp
   completed_at: timestamp
 }
 ```

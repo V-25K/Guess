@@ -5,10 +5,11 @@
 
 import type { Context } from '@devvit/public-api';
 import { BaseRepository } from './base.repository.js';
-import type { ChallengeAttempt, ChallengeAttemptCreate, ChallengeAttemptUpdate } from '../../shared/models/attempt.types.js';
+import type { ChallengeAttempt, ChallengeAttemptCreate, ChallengeAttemptUpdate, AttemptGuess, AttemptGuessCreate } from '../../shared/models/attempt.types.js';
 
 export class AttemptRepository extends BaseRepository {
   private readonly TABLE = 'challenge_attempts';
+  private readonly GUESSES_TABLE = 'attempt_guesses';
 
   constructor(context: Context) {
     super(context);
@@ -143,16 +144,33 @@ export class AttemptRepository extends BaseRepository {
   async recordCompletionAtomic(
     attemptId: string,
     userId: string,
-    imagesRevealed: number,
+    attemptsMade: number,
     points: number,
     experience: number
   ): Promise<boolean> {
-    return this.executeBooleanFunction('record_challenge_completion', {
+    return this.executeBooleanFunction('record_challenge_completion_v2', {
       p_attempt_id: attemptId,
       p_user_id: userId,
-      p_images_revealed: imagesRevealed,
+      p_attempts_made: attemptsMade,
       p_points: points,
       p_experience: experience,
+    });
+  }
+
+  /**
+   * Create a guess record in the attempt_guesses table
+   */
+  async createGuess(guess: AttemptGuessCreate): Promise<AttemptGuess | null> {
+    return this.insert<AttemptGuess>(this.GUESSES_TABLE, guess);
+  }
+
+  /**
+   * Get all guesses for an attempt
+   */
+  async getGuessesByAttempt(attemptId: string): Promise<AttemptGuess[]> {
+    return this.query<AttemptGuess>(this.GUESSES_TABLE, {
+      filter: { attempt_id: `eq.${attemptId}` },
+      order: 'created_at.asc',
     });
   }
 }

@@ -8,10 +8,13 @@ import { BaseService } from './base.service.js';
 import { AttemptRepository } from '../repositories/attempt.repository.js';
 import { ChallengeRepository } from '../repositories/challenge.repository.js';
 import { UserService } from './user.service.js';
-import { calculateChallengeReward } from '../../shared/utils/reward-calculator.js';
+import { AIValidationService } from './ai-validation.service.js';
+import { calculateAttemptReward, calculatePotentialScore } from '../../shared/utils/reward-calculator.js';
 import type { ChallengeAttempt, ChallengeAttemptCreate, AttemptResult } from '../../shared/models/attempt.types.js';
 
 export class AttemptService extends BaseService {
+  private aiValidationService: AIValidationService;
+
   constructor(
     context: Context,
     private attemptRepo: AttemptRepository,
@@ -23,6 +26,8 @@ export class AttemptService extends BaseService {
     if (!this.challengeRepo) {
       this.challengeRepo = new ChallengeRepository(context);
     }
+    // Initialize AI validation service
+    this.aiValidationService = new AIValidationService(context);
   }
 
   /**
@@ -44,8 +49,10 @@ export class AttemptService extends BaseService {
         const attemptData: ChallengeAttemptCreate = {
           user_id: userId,
           challenge_id: challengeId,
-          images_revealed: 1, // First image is revealed by default
+          attempts_made: 0, // No attempts made yet
+          images_revealed: 1, // First image is revealed by default (deprecated)
           is_solved: false,
+          game_over: false,
           points_earned: 0,
           experience_earned: 0,
           completed_at: null,
@@ -71,48 +78,55 @@ export class AttemptService extends BaseService {
 
   /**
    * Submit a guess for a challenge
-   * This method does NOT validate the answer - that's done by AIValidationService
-   * It only records the attempt and updates statistics if correct
+   * Validates the answer via AI, tracks attempts, enforces 10-attempt limit
    */
   async submitGuess(
     userId: string,
     challengeId: string,
-    isCorrect: boolean,
-    imagesRevealed: number
+    guess: string
   ): Promise<AttemptResult> {
     try {
-      // Check if user is the creator of this challenge
-      const challenge = await this.challengeRepo!.findById(challengeId);
-      
-      if (challenge && challenge.creator_id === userId) {
-        this.logWarning('AttemptService.submitGuess', `User ${userId} attempted to answer their own challenge ${challengeId}`);
-        return {
-          isCorrect: false,
-          explanation: "You can't answer your own challenge!",
-        };
-      }
-      
       // Get or create attempt record
       let attempt = await this.attemptRepo.findByUserAndChallenge(userId, challengeId);
       
       if (!attempt) {
-        // Create attempt if it doesn't exist
         await this.recordAttempt(userId, challengeId);
         attempt = await this.attemptRepo.findByUserAndChallenge(userId, challengeId);
-        
         if (!attempt) {
           return {
             isCorrect: false,
             explanation: 'Failed to record attempt',
+            attemptsRemaining: 0,
+            potentialScore: 0,
+            gameOver: true,
           };
         }
       }
       
-      // If already solved, don't process again
+      // Backward compatibility: Migrate old attempts that were solved but have attempts_made = 0
+      if (attempt.is_solved && attempt.attempts_made === 0) {
+        this.logInfo(
+          'AttemptService.submitGuess',
+          `Migrating legacy attempt: user=${userId}, challenge=${challengeId}, setting attempts_made=1`
+        );
+        
+        // Update the attempt to have attempts_made = 1 (assume solved on first attempt)
+        await this.attemptRepo.updateAttempt(attempt.id, {
+          attempts_made: 1,
+        });
+        
+        // Update local copy
+        attempt.attempts_made = 1;
+      }
+      
+      // Check if already solved or game over
       if (attempt.is_solved) {
         return {
           isCorrect: true,
           explanation: 'Challenge already completed',
+          attemptsRemaining: 0,
+          potentialScore: 0,
+          gameOver: true,
           reward: {
             points: attempt.points_earned,
             experience: attempt.experience_earned,
@@ -120,22 +134,59 @@ export class AttemptService extends BaseService {
         };
       }
       
-      // Calculate reward based on performance
-      const reward = calculateChallengeReward(imagesRevealed, isCorrect);
+      if (attempt.game_over) {
+        return {
+          isCorrect: false,
+          explanation: 'Game over - no attempts remaining',
+          attemptsRemaining: 0,
+          potentialScore: 0,
+          gameOver: true,
+        };
+      }
       
-      if (isCorrect) {
+      // Increment attempts
+      const newAttemptCount = attempt.attempts_made + 1;
+      
+      // Validate answer with AI
+      const challenge = await this.challengeRepo!.findById(challengeId);
+      if (!challenge) {
+        throw new Error('Challenge not found');
+      }
+      
+      const validation = await this.aiValidationService.validateAnswer(guess, challenge);
+      
+      // Store guess in history
+      await this.attemptRepo.createGuess({
+        attempt_id: attempt.id,
+        guess_text: guess,
+        validation_result: validation.judgment || 'INCORRECT',
+        ai_explanation: validation.explanation,
+      });
+      
+      // Update attempt count
+      await this.attemptRepo.updateAttempt(attempt.id, {
+        attempts_made: newAttemptCount,
+      });
+      
+      if (validation.isCorrect) {
+        // Calculate reward based on attempts
+        const reward = calculateAttemptReward(newAttemptCount, true);
+        
         // Record completion
         await this.recordCompletion(
           userId,
           challengeId,
-          imagesRevealed,
+          newAttemptCount,
           reward.points,
           reward.exp
         );
         
         return {
           isCorrect: true,
-          explanation: 'Correct! Challenge completed.',
+          explanation: validation.explanation,
+          attemptsRemaining: 0,
+          potentialScore: 0,
+          gameOver: true,
           reward: {
             points: reward.points,
             experience: reward.exp,
@@ -143,20 +194,40 @@ export class AttemptService extends BaseService {
         };
       }
       
-      // Incorrect guess - update images revealed count
-      await this.attemptRepo.updateAttempt(attempt.id, {
-        images_revealed: imagesRevealed,
-      });
+      // Check if game over (10 attempts exhausted)
+      if (newAttemptCount >= 10) {
+        await this.attemptRepo.updateAttempt(attempt.id, {
+          game_over: true,
+        });
+        
+        return {
+          isCorrect: false,
+          explanation: validation.explanation + ' Game over - no attempts remaining.',
+          attemptsRemaining: 0,
+          potentialScore: 0,
+          gameOver: true,
+        };
+      }
+      
+      // Incorrect but still has attempts
+      const attemptsRemaining = 10 - newAttemptCount;
+      const potentialScore = calculatePotentialScore(newAttemptCount);
       
       return {
         isCorrect: false,
-        explanation: 'Incorrect guess. Try revealing more hints.',
+        explanation: validation.explanation,
+        attemptsRemaining,
+        potentialScore,
+        gameOver: false,
       };
     } catch (error) {
       this.logError('AttemptService.submitGuess', error);
       return {
         isCorrect: false,
         explanation: 'An error occurred while processing your guess',
+        attemptsRemaining: 0,
+        potentialScore: 0,
+        gameOver: true,
       };
     }
   }
@@ -169,7 +240,7 @@ export class AttemptService extends BaseService {
   async recordCompletion(
     userId: string,
     challengeId: string,
-    imagesRevealed: number,
+    attemptsMade: number,
     points: number,
     experience: number
   ): Promise<boolean> {
@@ -195,7 +266,7 @@ export class AttemptService extends BaseService {
           () => this.attemptRepo.recordCompletionAtomic(
             attempt.id,
             userId,
-            imagesRevealed,
+            attemptsMade,
             points,
             experience
           ),
@@ -221,7 +292,7 @@ export class AttemptService extends BaseService {
         
         this.logInfo(
           'AttemptService',
-          `User ${userId} completed challenge ${challengeId} with ${imagesRevealed} images revealed. Earned ${points} points and ${experience} exp.`
+          `User ${userId} completed challenge ${challengeId} with ${attemptsMade} attempts. Earned ${points} points and ${experience} exp.`
         );
         
         return true;
@@ -236,7 +307,30 @@ export class AttemptService extends BaseService {
   async getUserAttempts(userId: string): Promise<ChallengeAttempt[]> {
     const result = await this.withErrorHandling(
       async () => {
-        return this.attemptRepo.findByUser(userId);
+        const attempts = await this.attemptRepo.findByUser(userId);
+        
+        // Backward compatibility: Migrate old attempts that were solved but have attempts_made = 0
+        const migratedAttempts = await Promise.all(
+          attempts.map(async (attempt) => {
+            if (attempt.is_solved && attempt.attempts_made === 0) {
+              this.logInfo(
+                'AttemptService.getUserAttempts',
+                `Migrating legacy attempt: user=${userId}, challenge=${attempt.challenge_id}, setting attempts_made=1`
+              );
+              
+              // Update the attempt to have attempts_made = 1 (assume solved on first attempt)
+              await this.attemptRepo.updateAttempt(attempt.id, {
+                attempts_made: 1,
+              });
+              
+              // Return updated attempt
+              return { ...attempt, attempts_made: 1 };
+            }
+            return attempt;
+          })
+        );
+        
+        return migratedAttempts;
       },
       'Failed to get user attempts'
     );
@@ -281,6 +375,78 @@ export class AttemptService extends BaseService {
   }
 
   /**
+   * Get completion status for a challenge
+   * Returns attempt details if completed, null otherwise
+   */
+  async getCompletionStatus(userId: string, challengeId: string): Promise<ChallengeAttempt | null> {
+    return this.withErrorHandling(
+      async () => {
+        const attempt = await this.attemptRepo.findByUserAndChallenge(userId, challengeId);
+        
+        // Return attempt only if it's completed
+        if (attempt && attempt.is_solved) {
+          // Backward compatibility: Migrate old attempts that were solved but have attempts_made = 0
+          if (attempt.attempts_made === 0) {
+            this.logInfo(
+              'AttemptService.getCompletionStatus',
+              `Migrating legacy attempt: user=${userId}, challenge=${challengeId}, setting attempts_made=1`
+            );
+            
+            // Update the attempt to have attempts_made = 1 (assume solved on first attempt)
+            await this.attemptRepo.updateAttempt(attempt.id, {
+              attempts_made: 1,
+            });
+            
+            // Update local copy
+            attempt.attempts_made = 1;
+          }
+          
+          return attempt;
+        }
+        
+        return null;
+      },
+      'Failed to get completion status'
+    );
+  }
+
+  /**
+   * Get attempt status for a challenge (completed or game over)
+   * Returns attempt details if completed OR game over, null if still in progress
+   */
+  async getAttemptStatus(userId: string, challengeId: string): Promise<ChallengeAttempt | null> {
+    return this.withErrorHandling(
+      async () => {
+        const attempt = await this.attemptRepo.findByUserAndChallenge(userId, challengeId);
+        
+        // Return attempt if it's completed OR game over
+        if (attempt && (attempt.is_solved || attempt.game_over)) {
+          // Backward compatibility: Migrate old attempts that were solved but have attempts_made = 0
+          if (attempt.is_solved && attempt.attempts_made === 0) {
+            this.logInfo(
+              'AttemptService.getAttemptStatus',
+              `Migrating legacy attempt: user=${userId}, challenge=${challengeId}, setting attempts_made=1`
+            );
+            
+            // Update the attempt to have attempts_made = 1 (assume solved on first attempt)
+            await this.attemptRepo.updateAttempt(attempt.id, {
+              attempts_made: 1,
+            });
+            
+            // Update local copy
+            attempt.attempts_made = 1;
+          }
+          
+          return attempt;
+        }
+        
+        return null;
+      },
+      'Failed to get attempt status'
+    );
+  }
+
+  /**
    * Update images revealed count for an attempt
    * Called when user reveals a new hint
    * Creates attempt record if it doesn't exist
@@ -295,7 +461,9 @@ export class AttemptService extends BaseService {
           attempt = await this.attemptRepo.create({
             user_id: userId,
             challenge_id: challengeId,
+            attempts_made: 0,
             is_solved: false,
+            game_over: false,
             images_revealed: imagesRevealed,
             points_earned: 0,
             experience_earned: 0,

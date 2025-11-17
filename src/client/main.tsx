@@ -89,18 +89,6 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     const [challenges, setChallenges] = useState<GameChallenge[]>([]);
     const [currentChallengeIndex, setCurrentChallengeIndex] = useState(0);
     
-    const [gameState, setGameState] = useState<{
-        revealedCount: number;
-        score: number;
-        message: string;
-        isGameOver: boolean;
-    }>({
-        revealedCount: 1,
-        score: 25,
-        message: '...',
-        isGameOver: false,
-    });
-    
     const [canCreateChallenge, setCanCreateChallenge] = useState(true);
     
     useAsync<GameChallenge[]>(async () => {
@@ -145,7 +133,6 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     const challengeIndex = data.findIndex(c => c.id === postData.challengeId);
                     if (challengeIndex !== -1) {
                         setCurrentChallengeIndex(challengeIndex);
-                        resetGame(data[challengeIndex]);
                         navigateTo('gameplay');
                         console.log(`[Main] Opening challenge directly: ${postData.challengeId}`);
                         return;
@@ -161,66 +148,9 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     
     const currentChallenge = challenges[currentChallengeIndex];
     
-    const resetGame = (challenge: GameChallenge) => {
-        setGameState({
-            revealedCount: 1,
-            score: challenge.max_score,
-            message: '...',
-            isGameOver: false,
-        });
-        
-        setChallenges(prev => prev.map((c, idx) => {
-            if (idx === currentChallengeIndex) {
-                return {
-                    ...c,
-                    images: c.images.map((img, i) => ({
-                        ...img,
-                        isRevealed: i === 0,
-                    })),
-                };
-            }
-            return c;
-        }));
-    };
-    
-    const handleRevealImage = (index: number) => {
-        if (gameState.isGameOver || currentChallenge.images[index].isRevealed) return;
-        
-        const newScore = Math.max(0, gameState.score - currentChallenge.score_deduction_per_hint);
-        const newRevealedCount = gameState.revealedCount + 1;
-        
-        setChallenges(prev => prev.map((c, idx) => {
-            if (idx === currentChallengeIndex) {
-                return {
-                    ...c,
-                    images: c.images.map((img, i) =>
-                        i === index ? { ...img, isRevealed: true } : img
-                    ),
-                };
-            }
-            return c;
-        }));
-        
-        setGameState(prev => ({
-            ...prev,
-            revealedCount: newRevealedCount,
-            score: newScore,
-            message: `Hint revealed! Score deducted by ${currentChallenge.score_deduction_per_hint} points.`,
-        }));
-        
-        services.attemptService.updateImagesRevealed(
-            userId,
-            currentChallenge.id,
-            newRevealedCount
-        ).catch(error => {
-            console.error('Failed to update images revealed:', error);
-        });
-    };
-    
     const handleNextChallenge = () => {
         const nextIndex = (currentChallengeIndex + 1) % challenges.length;
         setCurrentChallengeIndex(nextIndex);
-        resetGame(challenges[nextIndex]);
     };
     
     const handleChallengeCreated = async () => {
@@ -273,11 +203,8 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     currentChallenge={currentChallenge}
                     challenges={challenges}
                     currentChallengeIndex={currentChallengeIndex}
-                    gameState={gameState}
-                    onRevealImage={handleRevealImage}
                     onNextChallenge={handleNextChallenge}
                     onBackToMenu={() => navigateTo('menu')}
-                    setGameState={setGameState}
                 />
             </ErrorBoundary>
         );

@@ -8,6 +8,8 @@ import type { Challenge, GameChallenge, ImageItem } from '../models/challenge.ty
 /**
  * Parse image URLs from the image_url field
  * Format: "url1,url2,url3" or single URL
+ * 
+ * Updated for attempt-based scoring: All images are revealed immediately
  */
 export function parseImageUrls(imageUrl: string): ImageItem[] {
   const urls = imageUrl
@@ -15,9 +17,9 @@ export function parseImageUrls(imageUrl: string): ImageItem[] {
     .map((url) => url.trim())
     .filter((url) => url.length > 0);
 
-  return urls.map((url, index) => ({
+  return urls.map((url) => ({
     url,
-    isRevealed: index === 0, // First image is revealed by default
+    isRevealed: true, // All images revealed immediately in attempt-based scoring
   }));
 }
 

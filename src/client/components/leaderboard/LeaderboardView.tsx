@@ -120,8 +120,7 @@ export const LeaderboardView: Devvit.BlockComponent<LeaderboardViewProps> = (
                   weight={isCurrentUser ? "bold" : "regular"}
                   color={isCurrentUser ? "#FF4500" : "#1c1c1c"}
                 >
-                  {entry.username}
-                  {isCurrentUser && ' (You)'}
+                  {isCurrentUser ? `${entry.username} (You)` : entry.username}
                 </text>
                 <text size="xsmall" color="#878a8c">
                   Level {entry.level}

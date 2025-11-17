@@ -2,13 +2,15 @@
  * Gameplay View Wrapper Component
  * Wraps PlayGameView with form logic and state management
  * 
- * FIX: Creates services fresh in each form submission to ensure proper async context
+ * Updated for attempt-based scoring system:
+ * - All images revealed immediately
+ * - Tracks attempt count instead of revealed images
+ * - Uses new submitGuess signature with guess text
  */
 
-import { Devvit, useForm } from '@devvit/public-api';
+import { Devvit, useForm, useAsync, useState } from '@devvit/public-api';
 import { PlayGameView } from './PlayGameView.js';
 import type { GameChallenge } from '../../../shared/models/challenge.types.js';
-import { AIValidationService } from '../../../server/services/ai-validation.service.js';
 import { AttemptService } from '../../../server/services/attempt.service.js';
 import { UserService } from '../../../server/services/user.service.js';
 import { AttemptRepository } from '../../../server/repositories/attempt.repository.js';
@@ -20,21 +22,13 @@ export interface GameplayViewWrapperProps {
   currentChallenge: GameChallenge | null;
   challenges: GameChallenge[];
   currentChallengeIndex: number;
-  gameState: {
-    revealedCount: number;
-    score: number;
-    message: string;
-    isGameOver: boolean;
-  };
-  onRevealImage: (index: number) => void;
   onNextChallenge: () => void;
   onBackToMenu: () => void;
-  setGameState: (state: any) => void;
 }
 
 /**
  * Gameplay View Wrapper
- * Handles answer form submission and game logic
+ * Handles answer form submission and game logic with attempt-based scoring
  */
 export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps> = (
   {
@@ -42,14 +36,61 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     currentChallenge,
     challenges,
     currentChallengeIndex,
-    gameState,
-    onRevealImage,
     onNextChallenge,
     onBackToMenu,
-    setGameState,
   },
   context
 ) => {
+  // Game state with attempt tracking (replaces revealedCount/score)
+  const [gameState, setGameState] = useState<{
+    attemptCount: number;
+    attemptsRemaining: number;
+    potentialScore: number;
+    message: string;
+    isGameOver: boolean;
+    isCorrect: boolean;
+  }>({
+    attemptCount: 0,
+    attemptsRemaining: 10,
+    potentialScore: 30,
+    message: 'What connects these images?',
+    isGameOver: false,
+    isCorrect: false,
+  });
+
+  // Check if challenge is already completed or game over
+  const { data: attemptData, loading: checkingCompletion } = useAsync(async () => {
+    if (!currentChallenge) return null;
+    
+    const attemptRepo = new AttemptRepository(context);
+    const userRepo = new UserRepository(context);
+    const userService = new UserService(context, userRepo);
+    const attemptService = new AttemptService(context, attemptRepo, userService);
+    
+    // Use getAttemptStatus instead of getCompletionStatus to check for both completed and game over
+    return await attemptService.getAttemptStatus(userId, currentChallenge.id);
+  }, { 
+    depends: [currentChallenge?.id || '', userId],
+    finally: (data) => {
+      // If game is over (either completed or failed), update game state
+      if (data && (data.is_solved || data.game_over)) {
+        setGameState({
+          attemptCount: data.attempts_made,
+          attemptsRemaining: data.game_over && !data.is_solved ? 0 : 10 - data.attempts_made,
+          potentialScore: 0,
+          message: data.is_solved 
+            ? `You earned +${data.points_earned} points!`
+            : 'You\'ve used all 10 attempts',
+          isGameOver: true,
+          isCorrect: data.is_solved,
+        });
+      }
+    }
+  });
+  
+  const isCompleted = attemptData?.is_solved || false;
+  const isGameOver = attemptData?.game_over || false;
+  const completedScore = attemptData?.points_earned || 0;
   const answerForm = useForm(
     {
       fields: [
@@ -67,44 +108,43 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     async (values) => {
       if (!currentChallenge) return;
 
-      const answer = values.answer;
+      const guess = values.answer;
 
       try {
-        const aiValidationService = new AIValidationService(context);
+        // Create services for this async context
         const attemptRepo = new AttemptRepository(context);
         const challengeRepo = new ChallengeRepository(context);
         const userRepo = new UserRepository(context);
         const userService = new UserService(context, userRepo);
         const attemptService = new AttemptService(context, attemptRepo, userService, challengeRepo);
 
-        const validationResult = await aiValidationService.validateAnswer(answer, currentChallenge);
+        // Submit guess using new signature (passes guess text, AI validation happens in service)
+        const result = await attemptService.submitGuess(
+          userId,
+          currentChallenge.id,
+          guess
+        );
 
-        if (validationResult.isCorrect) {
-          const result = await attemptService.submitGuess(
-            userId,
-            currentChallenge.id,
-            true,
-            gameState.revealedCount
-          );
+        // Update game state with attempt tracking data
+        setGameState({
+          attemptCount: 10 - result.attemptsRemaining,
+          attemptsRemaining: result.attemptsRemaining,
+          potentialScore: result.potentialScore,
+          message: result.isCorrect 
+            ? `You earned +${result.reward?.points || 0} points!`
+            : result.explanation,
+          isGameOver: result.gameOver,
+          isCorrect: result.isCorrect,
+        });
 
-          setGameState((prev: any) => ({
-            ...prev,
-            isGameOver: true,
-            message: `🎉 Correct! You earned +${result.reward?.points || 0} points!`,
-          }));
-
+        if (result.isCorrect) {
           context.ui.showToast('🎉 Correct answer!');
-        } else {
-          const explanation = validationResult.explanation || 'Not quite right. Try again!';
-
-          setGameState((prev: any) => ({
-            ...prev,
-            message: `❌ ${explanation}`,
-          }));
+        } else if (result.gameOver) {
+          context.ui.showToast('❌ Game over - no attempts remaining');
         }
       } catch (error) {
         console.error('Error during answer submission:', error);
-        setGameState((prev: any) => ({
+        setGameState((prev) => ({
           ...prev,
           message: '⚠️ Error checking answer. Please try again.',
         }));
@@ -153,11 +193,17 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     <PlayGameView
       challenge={currentChallenge}
       gameState={gameState}
-      onRevealImage={onRevealImage}
+      attemptCount={gameState.attemptCount}
+      attemptsRemaining={gameState.attemptsRemaining}
+      potentialScore={gameState.potentialScore}
       onSubmitAnswer={handleOpenAnswerForm}
       onNextChallenge={onNextChallenge}
       onBackToMenu={onBackToMenu}
       isCreator={isCreator}
+      isCompleted={isCompleted}
+      isGameOver={isGameOver}
+      completedScore={completedScore}
+      checkingCompletion={checkingCompletion}
     />
   );
 };

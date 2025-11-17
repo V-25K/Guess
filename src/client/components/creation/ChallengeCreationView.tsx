@@ -132,12 +132,9 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     ? values.tags.split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0)
                     : [];
                 
-                const numImages = imageUrlArray.length;
-                const maxScore = 25;
-                const minScore = 10;
-                const deductiblePoints = maxScore - minScore; // 15
-                const numReveals = numImages - 1; // First image is shown by default
-                const scoreDeductionPerHint = deductiblePoints / numReveals; // Allow decimal values
+                // Fixed scoring values for attempt-based system
+                const maxScore = 30;
+                const scoreDeductionPerHint = 2;
                 
                 const challenge = await challengeService.createChallenge({
                     creator_id: userId,

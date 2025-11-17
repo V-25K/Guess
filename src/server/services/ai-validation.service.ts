@@ -20,10 +20,24 @@ import type { Context } from "@devvit/public-api";
 import { BaseService } from "./base.service.js";
 import type { Challenge } from "../../shared/models/challenge.types.js";
 
+/**
+ * ValidationResult Type
+ * 
+ * Represents the result of AI validation for a player's guess.
+ * 
+ * @property isCorrect - TRUE only if the player has officially won the round (judgment is 'CORRECT').
+ *                       'CLOSE' guesses are NOT considered correct - they are hints, not solutions.
+ * @property explanation - A brief, one-sentence explanation from the AI judge.
+ *                         Never reveals the correct answer.
+ * @property judgment - The AI's internal classification of the guess:
+ *                      - 'CORRECT': Exact match or equally specific synonym (player wins)
+ *                      - 'CLOSE': Relevant but too broad/generalized (hint, not a win)
+ *                      - 'INCORRECT': Completely off-topic (try again)
+ */
 export type ValidationResult = {
   isCorrect: boolean;
   explanation: string;
-  judgment?: "CORRECT" | "CLOSE" | "INCORRECT";
+  judgment: "CORRECT" | "CLOSE" | "INCORRECT";
 };
 
 export class AIValidationService extends BaseService {
@@ -96,9 +110,12 @@ export class AIValidationService extends BaseService {
     const systemPrompt = `You are a strict game judge for a 'guess the link' game. You will receive a player's guess, the correct answer, and guiding tags.
 Your task is to judge the guess and provide a brief, one-sentence explanation.
 Do NOT reveal the correct answer or any part of it in your explanation.
-- 'CORRECT': The guess is a perfect match.
-- 'CLOSE': The guess is relevant (same theme/concept) but not correct. Give a small, subtle hint.
-- 'INCORRECT': The guess is off-topic. Encourage them to try again.
+
+**JUDGMENT RULES:**
+- 'CORRECT': The guess is an exact match or an equally specific, common synonym.
+- 'CLOSE': The guess is relevant but **too broad or over-generalized** (e.g., "Parts of a computer" instead of "Computer Peripherals") or has a minor inaccuracy. Give a small, subtle hint about the level of specificity needed.
+- 'INCORRECT': The guess is completely off-topic. Encourage them to try again.
+
 Respond ONLY with the JSON object defined in the schema.`;
 
     // All dynamic data (guess, answer, tags) is now passed in the user prompt ("contents")
@@ -190,10 +207,6 @@ Respond ONLY with the JSON object defined in the schema.`;
     // Extract explanation. We made it required in the schema, but check just in case.
     const explanation = parsed.explanation as string | null | undefined;
 
-    // Determine if answer is correct (CORRECT or CLOSE both count as correct)
-    // --- DECISION: You might want to change this.
-    // Does 'CLOSE' count as a win? Or just a hint?
-    // I'll assume for now only 'CORRECT' is a win.
     const isCorrect = judgment === "CORRECT";
 
     this.logInfo(
@@ -232,7 +245,7 @@ Respond ONLY with the JSON object defined in the schema.`;
     const normalizedGuess = guess.toLowerCase().trim();
     const normalizedAnswer = challenge.correct_answer.toLowerCase().trim();
 
-    // Check for exact match
+    // 1. Check for Exact Match (most conservative CORRECT)
     if (normalizedGuess === normalizedAnswer) {
       return {
         isCorrect: true,
@@ -241,47 +254,20 @@ Respond ONLY with the JSON object defined in the schema.`;
       };
     }
 
-    // Check if guess contains the answer or vice versa (and is reasonably long)
-    const guessContainsAnswer =
-      normalizedGuess.length > 3 && normalizedGuess.includes(normalizedAnswer);
-    const answerContainsGuess =
-      normalizedAnswer.length > 3 && normalizedAnswer.includes(normalizedGuess);
-
-    if (guessContainsAnswer || answerContainsGuess) {
-      return {
-        isCorrect: true, // Assuming 'CLOSE' is a win for fallback
-        explanation:
-          "[Fallback Judge]: Close enough! Your answer matches the key concept.",
-        judgment: "CLOSE",
-      };
-    }
-
-    // Check for partial word matches
-    const guessWords = normalizedGuess.split(/\s+/);
-    const answerWords = normalizedAnswer.split(/\s+/);
-
-    const matchingWords = guessWords.filter(
-      (word) =>
-        word.length > 3 &&
-        answerWords.some(
-          (answerWord) => answerWord.includes(word) || word.includes(answerWord)
-        )
-    );
-
+    // 2. Check for Very Strong Substring Match (Conservative CLOSE)
     if (
-      matchingWords.length > 0 &&
-      matchingWords.length >=
-        Math.min(guessWords.length, answerWords.length) / 2
+      normalizedGuess.length > 5 &&
+      normalizedAnswer.includes(normalizedGuess)
     ) {
       return {
-        isCorrect: true, // Assuming 'CLOSE' is a win for fallback
+        isCorrect: false, // assuming CLOSE is NOT a win
         explanation:
-          "[Fallback Judge]: Close enough! Your answer captures the main idea.",
+          "[Fallback Judge]: Close, you've identified a key word. The full answer is more specific.",
         judgment: "CLOSE",
       };
     }
 
-    // No match found
+    // 3. No match found
     return {
       isCorrect: false,
       explanation: "[Fallback Judge]: Incorrect. Try revealing more hints.",
