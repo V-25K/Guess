@@ -73,7 +73,6 @@ export class AttemptRepository extends BaseRepository {
       const data = await response.json();
       return data.length > 0;
     } catch (error) {
-      console.error('Error checking if user attempted challenge:', error);
       return false;
     }
   }
@@ -102,7 +101,6 @@ export class AttemptRepository extends BaseRepository {
       const data = await response.json();
       return data.length > 0;
     } catch (error) {
-      console.error('Error checking if user solved challenge:', error);
       return false;
     }
   }
@@ -131,7 +129,6 @@ export class AttemptRepository extends BaseRepository {
       const data = await response.json();
       return data.length > 0 ? data[0] : null;
     } catch (error) {
-      console.error('Error finding attempt:', error);
       return null;
     }
   }

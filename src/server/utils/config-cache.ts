@@ -33,8 +33,6 @@ export async function getSupabaseConfig(context: Context): Promise<SupabaseConfi
     
     return { url, anonKey };
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('Failed to get Supabase config:', errorMessage);
     throw error;
   }
 }

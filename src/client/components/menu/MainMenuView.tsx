@@ -9,32 +9,51 @@ import type { ViewType } from '../../hooks/useNavigation.js';
 export interface MainMenuViewProps {
   canCreateChallenge: boolean;
   challengesCount?: number;
+  isMember: boolean;
+  userLevel: number;
+  isModerator: boolean;
   onNavigate: (view: ViewType) => void;
+  onSubscribe: () => void;
 }
 
 /**
  * Main Menu View
  * Central hub for navigating to different parts of the app
  */
-export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = ({
-  canCreateChallenge,
-  challengesCount = 0,
-  onNavigate,
-}) => {
+export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = (
+  { canCreateChallenge, challengesCount = 0, isMember, userLevel, isModerator, onNavigate, onSubscribe },
+  context
+) => {
+  const REQUIRED_LEVEL = 3;
   return (
     <vstack
-      alignment="center middle"
+      alignment="center top"
       padding="medium"
       gap="medium"
       width="100%"
       height="100%"
       backgroundColor="#F6F7F8"
     >
-      {/* Game Title */}
-      <vstack alignment="center middle" gap="small">
-        <text style="heading" size="xxlarge" color="#FF4500">
-          🎮 Guess The Link
-        </text>
+      {/* Subscribe Button - Top Right */}
+      <hstack width="100%" alignment="end top">
+        <button
+          onPress={onSubscribe}
+          appearance={isMember ? "secondary" : "primary"}
+          size="small"
+          disabled={isMember}
+        >
+          {isMember ? "Subscribed" : "Subscribe"}
+        </button>
+      </hstack>
+
+      {/* Game Title - Centered */}
+      <vstack alignment="center middle" gap="small" width="100%">
+        <image
+          url="logo.png"
+          imageHeight={100}
+          imageWidth={240}
+          resizeMode="fit"
+        />
         <text style="body" color="#878a8c" alignment="center">
           Find the connection between images!
         </text>
@@ -48,7 +67,7 @@ export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = ({
           size="large"
           width="80%"
         >
-          👤 Profile
+          Profile
         </button>
 
         <button
@@ -57,21 +76,47 @@ export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = ({
           size="large"
           width="80%"
         >
-          🏆 Leaderboard
+          Leaderboard
         </button>
 
         <button
           onPress={() => {
-            if (canCreateChallenge) {
-              onNavigate('create');
+            console.log(`[MainMenu] Create button clicked - Level: ${userLevel}, IsMod: ${isModerator}, Required: ${REQUIRED_LEVEL}, Can Create: ${canCreateChallenge}`);
+            
+            // First check: Is user a moderator? If yes, allow creation (subject to rate limit)
+            if (isModerator === true) {
+              console.log('[MainMenu] User is moderator - bypassing level check');
+              if (!canCreateChallenge) {
+                context.ui.showToast('Please wait before creating another challenge');
+              } else {
+                onNavigate('create');
+              }
+              return;
             }
+            
+            // Second check: Is user level high enough?
+            if (userLevel < REQUIRED_LEVEL) {
+              console.log(`[MainMenu] User level too low - Level: ${userLevel}, Required: ${REQUIRED_LEVEL}`);
+              context.ui.showToast(
+                `Reach level ${REQUIRED_LEVEL} to create challenges (Current: Level ${userLevel})`
+              );
+              return;
+            }
+            
+            // Third check: Rate limit
+            if (!canCreateChallenge) {
+              context.ui.showToast('Please wait before creating another challenge');
+              return;
+            }
+            
+            // All checks passed
+            onNavigate('create');
           }}
           appearance="secondary"
           size="large"
           width="80%"
-          disabled={!canCreateChallenge}
         >
-          ✨ Create Challenge
+          Create Challenge
         </button>
 
         <button
@@ -80,7 +125,7 @@ export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = ({
           size="large"
           width="80%"
         >
-          ▶️ Play
+          Play
         </button>
         
         {challengesCount === 0 && (

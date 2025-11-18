@@ -114,7 +114,6 @@ export class Cache<T> {
       this.set(key, value, ttl);
       return value;
     } catch (error) {
-      console.error(`Cache factory function failed for key ${key}:`, error);
       return null;
     }
   }

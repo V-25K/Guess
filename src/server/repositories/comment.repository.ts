@@ -62,7 +62,6 @@ export class CommentRepository extends BaseRepository {
       const data = await response.json();
       return data.length > 0;
     } catch (error) {
-      console.error('Error checking if comment has been rewarded:', error);
       return false;
     }
   }

@@ -58,15 +58,12 @@ export class ChallengeRepository extends BaseRepository {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Failed to fetch challenges:`, response.status, errorText);
         return [];
       }
 
       const data = await response.json();
       return data;
     } catch (error) {
-      console.error('[ChallengeRepo] Error fetching challenges:', error);
       return [];
     }
   }

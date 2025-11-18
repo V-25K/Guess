@@ -4,9 +4,10 @@
  * Uses context.cache() for automatic data loading
  */
 
-import { Devvit, useState, useAsync } from '@devvit/public-api';
+import { Devvit, useAsync } from '@devvit/public-api';
 import type { UserProfile } from '../../../shared/models/user.types.js';
 import type { UserService } from '../../../server/services/user.service.js';
+import { fetchAvatarUrl } from '../../../server/utils/challenge-utils.js';
 
 export interface ProfileViewProps {
   userId: string;
@@ -33,6 +34,23 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
     );
   }, {
     depends: [userId], // Re-fetch if userId changes
+  });
+
+  // Fetch avatar URL
+  const { data: avatarUrl } = useAsync<string | null>(async () => {
+    if (!profile?.username) return null;
+    return await context.cache(
+      async () => {
+        const url = await fetchAvatarUrl(context, profile.username);
+        return url || null; // Convert undefined to null for JSONValue compatibility
+      },
+      {
+        key: `avatar:${profile.username}`,
+        ttl: 30 * 60 * 1000, // 30 minutes (avatars don't change often)
+      }
+    );
+  }, {
+    depends: [profile?.username || ''],
   });
 
   if (loading) {
@@ -63,27 +81,44 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
   return (
     <vstack padding="medium" gap="small" width="100%" height="100%" backgroundColor="#F6F7F8">
       {/* Header - Username & Level */}
-      <vstack 
+      <hstack 
         padding="medium" 
-        gap="small" 
+        gap="medium" 
         width="100%"
         backgroundColor="#FFFFFF" 
         cornerRadius="medium"
-        alignment="center middle"
+        alignment="start middle"
       >
-        <text size="xxlarge">👤</text>
-        <text size="xlarge" weight="bold" color="#1c1c1c">
-          {profile.username}
-        </text>
-        <hstack gap="small" alignment="center middle">
-          <text size="medium" color="#FF4500" weight="bold">
-            Level {profile.level}
+        {/* Avatar - Circular on the left */}
+        {avatarUrl ? (
+          <image 
+            url={avatarUrl}
+            imageWidth={80}
+            imageHeight={80}
+            width="80px"
+            height="80px"
+            resizeMode="cover"
+            description={`${profile.username}'s avatar`}
+          />
+        ) : (
+          <text size="xxlarge">👤</text>
+        )}
+        
+        {/* Username and Level on the right */}
+        <vstack gap="small" alignment="start middle" grow>
+          <text size="xlarge" weight="bold" color="#1c1c1c">
+            {profile.username}
           </text>
-          <text size="small" color="#878a8c">
-            • {profile.total_experience} XP
-          </text>
-        </hstack>
-      </vstack>
+          <hstack gap="small" alignment="start middle">
+            <text size="medium" color="#FF4500" weight="bold">
+              Level {profile.level}
+            </text>
+            <text size="small" color="#878a8c">
+              • {profile.total_experience} XP
+            </text>
+          </hstack>
+        </vstack>
+      </hstack>
 
       {/* Stats Grid - Compact 2x2 */}
       <hstack gap="small" width="100%">

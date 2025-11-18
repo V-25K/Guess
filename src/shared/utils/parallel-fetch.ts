@@ -68,7 +68,6 @@ export async function fetchParallelSuccess<T>(
 
 /**
  * Fetch related data in parallel
- * Useful for fetching user profile + challenges + attempts together
  */
 export async function fetchRelatedData<T extends Record<string, any>>(
   fetchers: { [K in keyof T]: () => Promise<T[K]> }

@@ -5,6 +5,9 @@
     "entry": "src/client/main.tsx",
     "triggers": ["onCommentSubmit"]
   },
+  "media": {
+    "dir": "assets/"
+  },
   "permissions": {
     "http": {
       "domains": [
@@ -12,6 +15,11 @@
         "jqgithkiinvgcpskwado.supabase.co"
       ]
     },
-    "redis": true
+    "redis": true,
+    "reddit": {
+      "asUser": [
+        "SUBSCRIBE_TO_SUBREDDIT"
+      ]
+    }
   }
 }

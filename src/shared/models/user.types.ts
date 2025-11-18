@@ -3,6 +3,8 @@
  * Defines all types related to user profiles, statistics, and progression
  */
 
+export type UserRole = 'player' | 'mod';
+
 export type UserProfile = {
   id?: string;
   user_id: string;
@@ -14,6 +16,7 @@ export type UserProfile = {
   challenges_attempted: number;
   challenges_solved: number;
   last_challenge_created_at: string | null;
+  role: UserRole;
   created_at?: string;
   updated_at?: string;
 };

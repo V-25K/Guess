@@ -87,6 +87,7 @@ export class UserService extends BaseService {
           challenges_attempted: 0,
           challenges_solved: 0,
           last_challenge_created_at: null,
+          role: 'player',
         };
         
         const profile = await this.userRepo.create(newProfile);

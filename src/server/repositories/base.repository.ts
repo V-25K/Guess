@@ -122,25 +122,11 @@ export abstract class BaseRepository {
       });
 
       if (!response.ok) {
-        // Try to get error details from response
-        let errorDetails = '';
-        try {
-          const errorBody = await response.text();
-          errorDetails = errorBody ? ` - ${errorBody}` : '';
-        } catch (e) {
-          // Ignore if we can't read the error body
-        }
-        
-        console.error(`${method} request failed: ${response.status} ${response.statusText}${errorDetails}`);
-        console.error(`URL: ${url}`);
         return null;
       }
 
       return response;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-      console.error(`${method} request error: ${errorMessage}`);
-      console.error(`URL: ${url}`);
       return null;
     }
   }
@@ -171,20 +157,12 @@ export abstract class BaseRepository {
       
       const response = await this.executeRequest(url, 'GET', config.anonKey);
       if (!response) {
-        console.error(`Error querying ${table}: No response received`);
         return [];
       }
 
       const data = await response.json();
       return data;
     } catch (error) {
-      // Better error logging
-      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-      const errorStack = error instanceof Error ? error.stack : '';
-      console.error(`Error querying ${table}:`, errorMessage);
-      if (errorStack) {
-        console.error('Stack trace:', errorStack);
-      }
       return [];
     }
   }
@@ -220,20 +198,12 @@ export abstract class BaseRepository {
       );
 
       if (!response) {
-        console.error(`Error inserting into ${table}: No response received`);
         return null;
       }
 
       const result = await response.json();
       return result[0] || null;
     } catch (error) {
-      // Better error logging
-      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-      const errorStack = error instanceof Error ? error.stack : '';
-      console.error(`Error inserting into ${table}:`, errorMessage);
-      if (errorStack) {
-        console.error('Stack trace:', errorStack);
-      }
       return null;
     }
   }
@@ -282,7 +252,6 @@ export abstract class BaseRepository {
       const response = await this.executeRequest(url, 'DELETE', config.anonKey);
       return response !== null;
     } catch (error) {
-      console.error(`Error deleting from ${table}:`, error);
       return false;
     }
   }
@@ -316,7 +285,6 @@ export abstract class BaseRepository {
 
       return response ? this.extractCount(response) : 0;
     } catch (error) {
-      console.error(`Error counting ${table}:`, error);
       return 0;
     }
   }
@@ -345,7 +313,6 @@ export abstract class BaseRepository {
       if (!response) return [];
       return await response.json();
     } catch (error) {
-      console.error(`Error batch inserting into ${table}:`, error);
       return [];
     }
   }
@@ -377,7 +344,6 @@ export abstract class BaseRepository {
       if (!response) return [];
       return await response.json();
     } catch (error) {
-      console.error(`Error batch updating ${table}:`, error);
       return [];
     }
   }
@@ -404,19 +370,11 @@ export abstract class BaseRepository {
       );
 
       if (!response) {
-        console.error(`Error executing function ${functionName}: No response received`);
         return null;
       }
       
       return await response.json();
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : JSON.stringify(error);
-      const errorStack = error instanceof Error ? error.stack : '';
-      console.error(`Error executing function ${functionName}:`, errorMessage);
-      console.error(`Params:`, JSON.stringify(params));
-      if (errorStack) {
-        console.error('Stack trace:', errorStack);
-      }
       return null;
     }
   }
@@ -435,7 +393,6 @@ export abstract class BaseRepository {
       const result = await this.executeFunction<boolean>(functionName, params);
       return result === true;
     } catch (error) {
-      console.error(`Error executing boolean function ${functionName}:`, error);
       return false;
     }
   }

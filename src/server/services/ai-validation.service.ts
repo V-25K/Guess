@@ -1,19 +1,6 @@
 /**
  * AI Validation Service
  * Handles answer validation using Google Gemini API with fallback logic
- * * OPTIMIZATION NOTES:
- * 1.  **Model Choice**: `gemini-2.5-flash-preview-09-2025` is already the best choice for speed.
- * The ~1s latency is likely the best you'll get, and your "Thinking..."
- * UI state in `PlayGameView.tsx` is the correct way to handle this.
- * 2.  **Prompt Structure**: This file has been updated to separate static instructions
- * (System Prompt) from dynamic data (User Prompt/contents).
- * 3.  **Token Cost (Prompt)**: The new `systemPrompt` is more concise and removes
- * all dynamic data. The dynamic data (guess, answer, tags) is now passed
- * in the `contents` block. This is a cleaner and more token-efficient pattern.
- * 4.  **Response Quality**: The `systemPrompt` now gives very specific rules for
- * explanations: "brief, one-sentence" and "Do NOT reveal the correct answer".
- * This stops the AI from being too verbose or revealing the solution,
- * which also saves on response tokens.
  */
 
 import type { Context } from "@devvit/public-api";
@@ -41,7 +28,6 @@ export type ValidationResult = {
 };
 
 export class AIValidationService extends BaseService {
-  // Using gemini-2.5-flash-preview-09-2025 is the correct choice for speed.
   private readonly GEMINI_API_URL =
     "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
   private readonly MAX_RETRIES = 2;
@@ -104,9 +90,6 @@ export class AIValidationService extends BaseService {
       throw new Error("AI validation not configured");
     }
 
-    // --- OPTIMIZED PROMPT ---
-    // This system prompt is now static. It's more concise and gives
-    // stricter rules for the explanation to control response length and prevent reveals.
     const systemPrompt = `You are a strict game judge for a 'guess the link' game. You will receive a player's guess, the correct answer, and guiding tags.
 Your task is to judge the guess and provide a brief, one-sentence explanation.
 Do NOT reveal the correct answer or any part of it in your explanation.
@@ -118,8 +101,6 @@ Do NOT reveal the correct answer or any part of it in your explanation.
 
 Respond ONLY with the JSON object defined in the schema.`;
 
-    // All dynamic data (guess, answer, tags) is now passed in the user prompt ("contents")
-    // This is cleaner and saves tokens compared to interpolating into the system prompt.
     const userPrompt = `
       Correct Answer: "${challenge.correct_answer}"
       Tags: [${challenge.tags.join(", ")}]
@@ -141,9 +122,9 @@ Respond ONLY with the JSON object defined in the schema.`;
               type: "STRING",
               enum: ["CORRECT", "CLOSE", "INCORRECT"],
             },
-            explanation: { type: "STRING" }, // The prompt now guides this to be short
+            explanation: { type: "STRING" },
           },
-          required: ["judgment", "explanation"], // Make explanation required
+          required: ["judgment", "explanation"],
         },
       },
     };
@@ -204,7 +185,6 @@ Respond ONLY with the JSON object defined in the schema.`;
       throw new Error("Invalid judgment from API");
     }
 
-    // Extract explanation. We made it required in the schema, but check just in case.
     const explanation = parsed.explanation as string | null | undefined;
 
     const isCorrect = judgment === "CORRECT";
@@ -214,10 +194,7 @@ Respond ONLY with the JSON object defined in the schema.`;
       `AI judgment: ${judgment} for guess "${guess}" vs answer "${challenge.correct_answer}"`
     );
 
-    // Ensure explanation is never null or undefined
-    const safeExplanation = explanation
-      ? explanation
-      : this.getDefaultExplanation(isCorrect);
+    const safeExplanation = explanation || this.getDefaultExplanation(isCorrect);
 
     return {
       isCorrect,
@@ -254,20 +231,14 @@ Respond ONLY with the JSON object defined in the schema.`;
       };
     }
 
-    // 2. Check for Very Strong Substring Match (Conservative CLOSE)
-    if (
-      normalizedGuess.length > 5 &&
-      normalizedAnswer.includes(normalizedGuess)
-    ) {
+    if (normalizedGuess.length > 5 && normalizedAnswer.includes(normalizedGuess)) {
       return {
-        isCorrect: false, // assuming CLOSE is NOT a win
-        explanation:
-          "[Fallback Judge]: Close, you've identified a key word. The full answer is more specific.",
+        isCorrect: false,
+        explanation: "[Fallback Judge]: Close, you've identified a key word. The full answer is more specific.",
         judgment: "CLOSE",
       };
     }
 
-    // 3. No match found
     return {
       isCorrect: false,
       explanation: "[Fallback Judge]: Incorrect. Try revealing more hints.",

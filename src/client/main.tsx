@@ -25,7 +25,7 @@ import { CommentRepository } from '../server/repositories/comment.repository.js'
 import { useNavigation } from './hooks/useNavigation.js';
 
 import { NavigationBar, ViewContainer } from './components/navigation/index.js';
-import { ErrorBoundary, LoadingView } from './components/shared/index.js';
+import { ErrorBoundary, LoadingView, AllCaughtUpView } from './components/shared/index.js';
 import { ProfileView } from './components/profile/index.js';
 import { LeaderboardView } from './components/leaderboard/index.js';
 import { GameplayViewWrapper } from './components/gameplay/index.js';
@@ -35,7 +35,7 @@ import { MainMenuView } from './components/menu/index.js';
 import { convertToGameChallenges } from '../shared/utils/challenge-utils.js';
 import { fetchAvatarUrl } from '../server/utils/challenge-utils.js';
 
-import type { Challenge, GameChallenge } from '../shared/models/challenge.types.js';
+import type { GameChallenge } from '../shared/models/challenge.types.js';
 
 /**
  * Initialize all services with dependency injection
@@ -68,14 +68,31 @@ function initializeServices(context: Context | any) {
 const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     const services = initializeServices(context);
     
-    const { data: currentUser } = useAsync<{ id: string; username: string } | null>(async () => {
-        const user = await context.reddit.getCurrentUser();
-        if (!user) return null;
-        return {
-            id: user.id || 'anonymous',
-            username: user.username || 'anonymous'
-        };
+    const { data: currentUser, error: userError } = useAsync<{ id: string; username: string } | null>(async () => {
+        try {
+            const user = await context.reddit.getCurrentUser();
+            if (!user) return null;
+            return {
+                id: user.id || 'anonymous',
+                username: user.username || 'anonymous'
+            };
+        } catch (error) {
+            return null;
+        }
     });
+    
+    // Handle user authentication errors
+    if (userError) {
+        return (
+            <vstack alignment="center middle" padding="large" gap="medium" width="100%" height="100%" backgroundColor="#F6F7F8">
+                <text size="xlarge">⚠️</text>
+                <text size="large" weight="bold" color="#1c1c1c">Authentication Error</text>
+                <text size="medium" color="#878a8c" alignment="center">
+                    Unable to authenticate. Please try refreshing the page.
+                </text>
+            </vstack>
+        );
+    }
     
     const userId = currentUser?.id || 'anonymous';
     const username = currentUser?.username || 'anonymous';
@@ -87,23 +104,53 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     const { currentView, navigateTo } = useNavigation('loading');
     
     const [challenges, setChallenges] = useState<GameChallenge[]>([]);
+    const [availableChallenges, setAvailableChallenges] = useState<GameChallenge[]>([]);
     const [currentChallengeIndex, setCurrentChallengeIndex] = useState(0);
+    const [isViewingSpecificChallenge, setIsViewingSpecificChallenge] = useState(false);
     
     const [canCreateChallenge, setCanCreateChallenge] = useState(true);
+    const [isMember, setIsMember] = useState(false);
+    const [subredditName] = useState<string>('guess_the_1ink_dev'); // Hardcoded subreddit name
+    const [userLevel, setUserLevel] = useState(0);
+    const [isModerator, setIsModerator] = useState(false);
+    
+    // Load user profile separately to ensure state updates work
+    useAsync(async () => {
+        if (!currentUser) return null;
+        
+        const profile = await services.userService.getUserProfile(userId, username);
+        return profile;
+    }, {
+        depends: [userId],
+        finally: (profile) => {
+            if (profile) {
+                setUserLevel(profile.level);
+                const isMod = profile.role === 'mod';
+                setIsModerator(isMod);
+            }
+        }
+    });
     
     useAsync<GameChallenge[]>(async () => {
         if (!currentUser) return [];
         
         try {
-            await services.userService.getUserProfile(userId, username);
+            // Check if user has subscribed (tracked in Redis)
+            try {
+                const subscriptionKey = `subscription:${userId}`;
+                const isSubscribed = await context.redis.get(subscriptionKey);
+                setIsMember(isSubscribed === 'true');
+            } catch (error) {
+                setIsMember(false);
+            }
             
             const rateLimitCheck = await services.userService.canCreateChallenge(userId);
             setCanCreateChallenge(rateLimitCheck.canCreate);
             
             const dbChallenges = await services.challengeService.getChallenges();
             const gameChallenges = convertToGameChallenges(dbChallenges);
-            console.log(`[Main] Converted to ${gameChallenges.length} game challenges`);
             
+            // Fetch avatars
             await Promise.all(
                 gameChallenges.map(async (challenge) => {
                     try {
@@ -112,14 +159,28 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                             challenge.creator_avatar_url = avatarUrl;
                         }
                     } catch (error) {
-                        console.error('Failed to fetch avatar:', error);
                     }
                 })
             );
             
+            // Filter out completed or game over challenges
+            const available: GameChallenge[] = [];
+            for (const challenge of gameChallenges) {
+                try {
+                    const attemptStatus = await services.attemptService.getAttemptStatus(userId, challenge.id);
+                    // Include challenge if not attempted, or if attempted but not completed and not game over
+                    if (!attemptStatus || (!attemptStatus.is_solved && !attemptStatus.game_over)) {
+                        available.push(challenge);
+                    }
+                } catch (error) {
+                    available.push(challenge);
+                }
+            }
+            
+            setAvailableChallenges(available);
+            
             return gameChallenges;
         } catch (error) {
-            console.error('[Main] Failed to load initial data:', error);
             return [];
         }
     }, {
@@ -133,8 +194,8 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     const challengeIndex = data.findIndex(c => c.id === postData.challengeId);
                     if (challengeIndex !== -1) {
                         setCurrentChallengeIndex(challengeIndex);
+                        setIsViewingSpecificChallenge(true);
                         navigateTo('gameplay');
-                        console.log(`[Main] Opening challenge directly: ${postData.challengeId}`);
                         return;
                     }
                 }
@@ -146,36 +207,127 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
         }
     });
     
-    const currentChallenge = challenges[currentChallengeIndex];
+    // Use full challenges list if viewing specific challenge, otherwise use available challenges
+    const activeChallenges = isViewingSpecificChallenge ? challenges : availableChallenges;
+    const currentChallenge = activeChallenges[currentChallengeIndex] || null;
     
-    const handleNextChallenge = () => {
-        const nextIndex = (currentChallengeIndex + 1) % challenges.length;
-        setCurrentChallengeIndex(nextIndex);
+    const handleNextChallenge = async () => {
+        try {
+            if (isViewingSpecificChallenge) {
+                // When viewing a specific challenge, switch to browsing mode
+                setIsViewingSpecificChallenge(false);
+                setCurrentChallengeIndex(0);
+                return;
+            }
+            
+            // Validate current index
+            const nextIndex = currentChallengeIndex + 1;
+            
+            // Move to next available challenge
+            if (nextIndex < availableChallenges.length && availableChallenges[nextIndex]) {
+                setCurrentChallengeIndex(nextIndex);
+            } else {
+                // Refresh available challenges to check if any new ones are available
+                const available: GameChallenge[] = [];
+                for (const challenge of challenges) {
+                    try {
+                        const attemptStatus = await services.attemptService.getAttemptStatus(userId, challenge.id);
+                        if (!attemptStatus || (!attemptStatus.is_solved && !attemptStatus.game_over)) {
+                            available.push(challenge);
+                        }
+                    } catch (error) {
+                        available.push(challenge);
+                    }
+                }
+                setAvailableChallenges(available);
+                setCurrentChallengeIndex(0);
+            }
+        } catch (error) {
+            context.ui.showToast('⚠️ Error loading next challenge');
+        }
+    };
+    
+    const handleSubscribe = async () => {
+        try {
+            // Try to subscribe user to the current subreddit using Reddit API
+            await context.reddit.subscribeToCurrentSubreddit();
+            
+            // Track subscription in Redis
+            const subscriptionKey = `subscription:${userId}`;
+            await context.redis.set(subscriptionKey, 'true');
+            
+            // Update membership status
+            setIsMember(true);
+            context.ui.showToast('Successfully subscribed!');
+        } catch (error: any) {
+            
+            // If permission not granted, navigate to subreddit as fallback
+            if (error?.message?.includes('permission not granted')) {
+                try {
+                    // Navigate to subreddit URL
+                    context.ui.navigateTo(`https://www.reddit.com/r/${subredditName}`);
+                    
+                    // Optimistically mark as subscribed
+                    const subscriptionKey = `subscription:${userId}`;
+                    await context.redis.set(subscriptionKey, 'true');
+                    setIsMember(true);
+                    
+                    context.ui.showToast('Opening subreddit to subscribe');
+                } catch (navError) {
+                    console.error('[Main] Error navigating to subreddit:', navError);
+                    context.ui.showToast('Please visit r/guess_the_1ink_dev to subscribe');
+                }
+            } else {
+                context.ui.showToast('Failed to subscribe. Please try again.');
+            }
+        }
     };
     
     const handleChallengeCreated = async () => {
-        const dbChallenges = await services.challengeService.getChallenges();
-        const gameChallenges = convertToGameChallenges(dbChallenges);
-        setChallenges(gameChallenges);
-        
-        const newRateLimitCheck = await services.userService.canCreateChallenge(userId);
-        setCanCreateChallenge(newRateLimitCheck.canCreate);
-        
-        navigateTo('menu');
+        try {
+            const dbChallenges = await services.challengeService.getChallenges();
+            const gameChallenges = convertToGameChallenges(dbChallenges);
+            setChallenges(gameChallenges);
+            
+            // Refresh available challenges
+            const available: GameChallenge[] = [];
+            for (const challenge of gameChallenges) {
+                try {
+                    const attemptStatus = await services.attemptService.getAttemptStatus(userId, challenge.id);
+                    if (!attemptStatus || (!attemptStatus.is_solved && !attemptStatus.game_over)) {
+                        available.push(challenge);
+                    }
+                } catch (error) {
+                    console.error(`[Main] Error checking attempt status:`, error);
+                    available.push(challenge);
+                }
+            }
+            setAvailableChallenges(available);
+            
+            const newRateLimitCheck = await services.userService.canCreateChallenge(userId);
+            setCanCreateChallenge(newRateLimitCheck.canCreate);
+            
+            navigateTo('menu');
+        } catch (error) {
+            console.error('[Main] Error in handleChallengeCreated:', error);
+            context.ui.showToast('⚠️ Error refreshing challenges');
+            navigateTo('menu');
+        }
     };
     
     const CreateView = () => {
-        return (
-            <ChallengeCreationView
-                userId={userId}
-                username={username}
-                canCreateChallenge={canCreateChallenge}
-                challengeService={services.challengeService}
-                userService={services.userService}
-                onSuccess={handleChallengeCreated}
-                onCancel={() => navigateTo('menu')}
-            />
-        );
+        const createProps = {
+            userId,
+            username,
+            canCreateChallenge,
+            userLevel,
+            isModerator,
+            challengeService: services.challengeService,
+            userService: services.userService,
+            onSuccess: handleChallengeCreated,
+            onCancel: () => navigateTo('menu'),
+        };
+        return <ChallengeCreationView {...createProps as any} />;
     };
     
     if (currentView === 'loading') {
@@ -183,16 +335,65 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     }
     
     if (currentView === 'menu') {
-        return (
-            <MainMenuView
-                canCreateChallenge={canCreateChallenge}
-                challengesCount={challenges.length}
-                onNavigate={navigateTo}
-            />
-        );
+        console.log(`[Main] Rendering menu - isModerator: ${isModerator}, userLevel: ${userLevel}`);
+        const menuProps = {
+            canCreateChallenge,
+            challengesCount: challenges.length,
+            isMember,
+            userLevel,
+            isModerator,
+            onNavigate: navigateTo,
+            onSubscribe: handleSubscribe,
+        };
+        return <MainMenuView {...menuProps as any} />;
     }
     
     if (currentView === 'gameplay') {
+        // If viewing a specific challenge, always show it (even if completed)
+        if (isViewingSpecificChallenge) {
+            // Safety check: ensure challenge exists
+            if (!currentChallenge) {
+                return (
+                    <AllCaughtUpView
+                        onBackToMenu={() => {
+                            setIsViewingSpecificChallenge(false);
+                            navigateTo('menu');
+                        }}
+                        message="Challenge not found"
+                    />
+                );
+            }
+            
+            return (
+                <ErrorBoundary
+                    onError={() => {/* Error logged by ErrorBoundary component */}}
+                    onReset={() => navigateTo('menu')}
+                >
+                    <GameplayViewWrapper
+                        userId={userId}
+                        currentChallenge={currentChallenge}
+                        challenges={challenges}
+                        currentChallengeIndex={currentChallengeIndex}
+                        onNextChallenge={handleNextChallenge}
+                        onBackToMenu={() => {
+                            setIsViewingSpecificChallenge(false);
+                            navigateTo('menu');
+                        }}
+                    />
+                </ErrorBoundary>
+            );
+        }
+        
+        // Check if we have available challenges to show
+        if (availableChallenges.length === 0 || !currentChallenge) {
+            return (
+                <AllCaughtUpView
+                    onBackToMenu={() => navigateTo('menu')}
+                    message="You've completed all available challenges!"
+                />
+            );
+        }
+        
         return (
             <ErrorBoundary
                 onError={() => {/* Error logged by ErrorBoundary component */}}
@@ -201,7 +402,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                 <GameplayViewWrapper
                     userId={userId}
                     currentChallenge={currentChallenge}
-                    challenges={challenges}
+                    challenges={availableChallenges}
                     currentChallengeIndex={currentChallengeIndex}
                     onNextChallenge={handleNextChallenge}
                     onBackToMenu={() => navigateTo('menu')}

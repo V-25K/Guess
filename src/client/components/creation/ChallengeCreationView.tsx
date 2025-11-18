@@ -12,6 +12,8 @@ export interface ChallengeCreationViewProps {
     userId: string;
     username: string;
     canCreateChallenge: boolean;
+    userLevel: number;
+    isModerator: boolean;
     challengeService: ChallengeService;
     userService: UserService;
     onSuccess: (challenge: Challenge) => void;
@@ -23,9 +25,10 @@ export interface ChallengeCreationViewProps {
  * Displays creation UI and handles form submission
  */
 export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewProps> = (
-    { userId, username, canCreateChallenge, challengeService, userService, onSuccess, onCancel },
+    { userId, username, canCreateChallenge, userLevel, isModerator, challengeService, userService, onSuccess, onCancel },
     context
 ) => {
+    const REQUIRED_LEVEL = 3;
     const createForm = useForm(
         {
             title: 'Create Challenge',
@@ -46,11 +49,28 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     helpText: 'The common link between all images',
                 },
                 {
-                    name: 'tags',
-                    label: 'Tags * (comma-separated)',
-                    type: 'string',
+                    name: 'tag',
+                    label: 'Category *',
+                    type: 'select',
                     required: true,
-                    helpText: 'e.g., Movies, Sports, History',
+                    options: [
+                        { label: '🎌 Anime', value: 'anime' },
+                        { label: '🌐 General', value: 'general' },
+                        { label: '⚽ Sport', value: 'sport' },
+                        { label: '🎬 Movies', value: 'movies' },
+                        { label: '🎵 Music', value: 'music' },
+                        { label: '🎮 Gaming', value: 'gaming' },
+                        { label: '📜 History', value: 'history' },
+                        { label: '🔬 Science', value: 'science' },
+                        { label: '🗺️ Geography', value: 'geography' },
+                        { label: '🍕 Food', value: 'food' },
+                        { label: '🎨 Art', value: 'art' },
+                        { label: '💻 Technology', value: 'technology' },
+                        { label: '🌿 Nature', value: 'nature' },
+                        { label: '⭐ Celebrities', value: 'celebrities' },
+                        { label: '🏷️ Brands', value: 'brands' },
+                    ],
+                    helpText: 'Select the main category for your challenge',
                 },
                 {
                     name: 'image1',
@@ -128,8 +148,8 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     return;
                 }
                 
-                const tagArray = values.tags
-                    ? values.tags.split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0)
+                const tagArray: string[] = values.tag 
+                    ? (Array.isArray(values.tag) ? values.tag : [values.tag])
                     : [];
                 
                 // Fixed scoring values for attempt-based system
@@ -189,20 +209,23 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
             
             <vstack gap="medium" width="80%" alignment="center middle">
                 <button 
-                    onPress={() => context.ui.showForm(createForm)}
+                    onPress={() => {
+                        if (!isModerator && userLevel < REQUIRED_LEVEL) {
+                            context.ui.showToast(
+                                `Reach level ${REQUIRED_LEVEL} to create challenges (Current: Level ${userLevel})`
+                            );
+                        } else if (!canCreateChallenge) {
+                            context.ui.showToast('Please wait before creating another challenge');
+                        } else {
+                            context.ui.showForm(createForm);
+                        }
+                    }}
                     appearance="primary"
                     size="large"
                     width="100%"
-                    disabled={!canCreateChallenge}
                 >
-                    {canCreateChallenge ? '📝 Open Create Form' : '⏳ Rate Limited'}
+                    {isModerator ? 'Open Create Form (Moderator)' : 'Open Create Form'}
                 </button>
-                
-                {!canCreateChallenge && (
-                    <text size="small" color="#878a8c" alignment="center">
-                        You can create a new challenge after the cooldown period
-                    </text>
-                )}
                 
                 <button 
                     onPress={onCancel}
@@ -210,7 +233,7 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     size="medium"
                     width="100%"
                 >
-                    ← Back to Menu
+                    Back to Menu
                 </button>
             </vstack>
             
@@ -234,7 +257,7 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     • Choose a clear, specific answer
                 </text>
                 <text style="body" size="xsmall" color="#666666">
-                    • Add relevant tags for better discoverability
+                    • Select the most relevant category
                 </text>
             </vstack>
         </vstack>

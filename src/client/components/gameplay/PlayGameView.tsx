@@ -62,63 +62,66 @@ const ImageCell: Devvit.BlockComponent<{
 
 /**
  * Render image grid based on image count
+ * Mobile-first: 3 images per row, max 2 rows
  */
 const ImageGrid: Devvit.BlockComponent<{
     images: any[];
     onEnlarge: (index: number) => void;
 }> = ({ images, onEnlarge }) => {
     const imageCount = images.length;
+    const imageSize = 90; // Consistent size for all images
 
     if (imageCount === 5) {
+        // 3 images in first row, 2 in second row
         return (
             <vstack gap="small" width="100%" alignment="center middle">
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[0]} index={0} sizePx={80} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[1]} index={1} sizePx={80} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[2]} index={2} sizePx={80} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[0]} index={0} sizePx={imageSize} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[1]} index={1} sizePx={imageSize} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[2]} index={2} sizePx={imageSize} onEnlarge={onEnlarge} />
                 </hstack>
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[3]} index={3} sizePx={80} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[4]} index={4} sizePx={80} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[3]} index={3} sizePx={imageSize} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[4]} index={4} sizePx={imageSize} onEnlarge={onEnlarge} />
                 </hstack>
             </vstack>
         );
     } else if (imageCount === 4) {
+        // 3 images in first row, 1 in second row
         return (
             <vstack gap="small" width="100%" alignment="center middle">
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[0]} index={0} sizePx={90} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[1]} index={1} sizePx={90} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[0]} index={0} sizePx={imageSize} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[1]} index={1} sizePx={imageSize} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[2]} index={2} sizePx={imageSize} onEnlarge={onEnlarge} />
                 </hstack>
                 <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[2]} index={2} sizePx={90} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[3]} index={3} sizePx={90} onEnlarge={onEnlarge} />
+                    <ImageCell image={images[3]} index={3} sizePx={imageSize} onEnlarge={onEnlarge} />
                 </hstack>
             </vstack>
         );
     } else if (imageCount === 3) {
-        return (
-            <vstack gap="small" width="100%" alignment="center middle">
-                <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[0]} index={0} sizePx={90} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[1]} index={1} sizePx={90} onEnlarge={onEnlarge} />
-                </hstack>
-                <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[2]} index={2} sizePx={90} onEnlarge={onEnlarge} />
-                </hstack>
-            </vstack>
-        );
-    } else if (imageCount === 2) {
+        // All 3 images in one row
         return (
             <hstack gap="small" width="100%" alignment="center middle">
-                <ImageCell image={images[0]} index={0} sizePx={110} onEnlarge={onEnlarge} />
-                <ImageCell image={images[1]} index={1} sizePx={110} onEnlarge={onEnlarge} />
+                <ImageCell image={images[0]} index={0} sizePx={imageSize} onEnlarge={onEnlarge} />
+                <ImageCell image={images[1]} index={1} sizePx={imageSize} onEnlarge={onEnlarge} />
+                <ImageCell image={images[2]} index={2} sizePx={imageSize} onEnlarge={onEnlarge} />
+            </hstack>
+        );
+    } else if (imageCount === 2) {
+        // 2 images centered
+        return (
+            <hstack gap="small" width="100%" alignment="center middle">
+                <ImageCell image={images[0]} index={0} sizePx={imageSize} onEnlarge={onEnlarge} />
+                <ImageCell image={images[1]} index={1} sizePx={imageSize} onEnlarge={onEnlarge} />
             </hstack>
         );
     } else {
+        // Single image
         return (
             <hstack gap="small" width="100%" alignment="center middle">
-                <ImageCell image={images[0]} index={0} sizePx={140} onEnlarge={onEnlarge} />
+                <ImageCell image={images[0]} index={0} sizePx={imageSize} onEnlarge={onEnlarge} />
             </hstack>
         );
     }
@@ -186,65 +189,72 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
     }
     
     return (
-        <vstack padding="small" gap="small" width="100%" height="100%" backgroundColor="#F6F7F8">
-            {/* Top Section: Header - Mobile First */}
-            <hstack width="100%" alignment="middle" gap="small">
-                {/* Back button */}
-                <button 
-                    onPress={onBackToMenu} 
-                    appearance="secondary"
-                    size="small"
-                    icon="back"
-                />
-                
-                {/* Creator info */}
-                <text size="xsmall" color="#878a8c">By {challenge.creator_username}</text>
-                
-                <spacer grow />
-                
-                {/* Score and Attempt tracking - stacked vertically */}
-                <vstack alignment="end top" gap="none">
-                    <text size="xlarge" weight="bold" color="#4CAF50">
-                        {potentialScore} pts
-                    </text>
-                    <text size="small" color="#666666">
-                        Attempt {Math.min(attemptCount + 1, 10)} of 10
-                    </text>
-                </vstack>
-            </hstack>
-
-            {/* Title with completion badge */}
-            <hstack gap="small" alignment="middle">
-                <text size="large" weight="bold" color="#1c1c1c">{challenge.title}</text>
-                {isCompleted && (
-                    <text size="large">✅</text>
-                )}
-            </hstack>
-            
-            {/* Tags on separate line */}
-            {challenge.tags && challenge.tags.length > 0 && (
-                <hstack gap="small" alignment="middle">
-                    {challenge.tags.slice(0, 2).map((tag) => (
-                        <hstack 
-                            padding="small"
-                            backgroundColor="#228B22"
-                            cornerRadius="small"
-                            gap="small"
-                            alignment="middle"
-                        >
-                            <text size="xsmall" color="#FFFFFF">🏷️</text>
-                            <text size="xsmall" color="#FFFFFF" weight="bold">{tag}</text>
-                        </hstack>
-                    ))}
+        <vstack padding="medium" gap="medium" width="100%" height="100%" backgroundColor="#F6F7F8">
+            {/* Compact Header */}
+            <vstack gap="small" width="100%">
+                {/* Top row: Back button and score */}
+                <hstack width="100%" alignment="middle">
+                    <button 
+                        onPress={onBackToMenu} 
+                        appearance="secondary"
+                        size="small"
+                        icon="back"
+                    />
+                    <spacer grow />
+                    <vstack alignment="end middle" gap="none">
+                        <text size="xlarge" weight="bold" color="#4CAF50">
+                            {potentialScore} pts
+                        </text>
+                        <text size="xsmall" color="#878a8c">
+                            {Math.min(attemptCount + 1, 10)}/10 attempts
+                        </text>
+                    </vstack>
                 </hstack>
-            )}
-            
-            {/* Description */}
-            {challenge.description && (
-                <text size="small" color="#666666">{challenge.description}</text>
-            )}
 
-            {/* Image Grid - Compact */}
+                {/* Title and completion badge */}
+                <hstack gap="small" alignment="middle" width="100%">
+                    <text size="large" weight="bold" color="#1c1c1c">{challenge.title}</text>
+                    {isCompleted && <text size="medium">✅</text>}
+                </hstack>
+
+                {/* Description (if provided) */}
+                {challenge.description && (
+                    <vstack 
+                        width="100%" 
+                        padding="small"
+                        backgroundColor="#FFFFFF"
+                        cornerRadius="small"
+                        border="thin"
+                        borderColor="#E0E0E0"
+                    >
+                        <text size="small" color="#666666" wrap>
+                            {challenge.description}
+                        </text>
+                    </vstack>
+                )}
+
+                {/* Creator and tags in one line */}
+                <hstack gap="small" alignment="middle" width="100%">
+                    <text size="xsmall" color="#878a8c">by {challenge.creator_username}</text>
+                    {challenge.tags && challenge.tags.length > 0 && (
+                        <>
+                            <text size="xsmall" color="#878a8c">•</text>
+                            {challenge.tags.slice(0, 2).map((tag, index) => (
+                                <hstack 
+                                    key={tag}
+                                    padding="xsmall"
+                                    backgroundColor="#E8F5E9"
+                                    cornerRadius="small"
+                                >
+                                    <text size="xsmall" color="#2E7D32" weight="bold">{tag}</text>
+                                </hstack>
+                            ))}
+                        </>
+                    )}
+                </hstack>
+            </vstack>
+
+            {/* Image Grid */}
             <ImageGrid 
                 images={challenge.images} 
                 onEnlarge={handleEnlargeImage}
@@ -256,162 +266,121 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                     padding="small" 
                     backgroundColor="#FFF4E6"
                     cornerRadius="small"
-                    border="thin"
-                    borderColor="#FF8C00"
                     width="100%"
                     alignment="center middle"
                 >
                     <text size="small" color="#FF8C00" weight="bold">
-                        ⚠️ Only {attemptsRemaining} attempts remaining!
+                        ⚠️ {attemptsRemaining} attempts left!
                     </text>
                 </hstack>
             )}
 
-            {/* AI Judgment Message - Flexible height, positioned at bottom-left with avatar */}
+            {/* Message Box with Avatar */}
             <hstack 
                 width="100%"
                 gap="small"
                 alignment="start top"
             >
-                {/* Creator Avatar - Large on bottom-left */}
+                {/* Creator Avatar */}
                 {challenge.creator_avatar_url ? (
                     <image 
                         url={challenge.creator_avatar_url}
-                        imageWidth={80}
-                        imageHeight={80}
-                        width="80px"
-                        height="80px"
+                        imageWidth={60}
+                        imageHeight={60}
+                        width="60px"
+                        height="60px"
                         resizeMode="cover"
                     />
                 ) : (
                     <vstack 
-                        width="80px" 
-                        height="80px" 
+                        width="60px" 
+                        height="60px" 
                         backgroundColor="#FF4500"
                         cornerRadius="full"
                         alignment="center middle"
                     >
-                        <text size="xxlarge" weight="bold" color="#FFFFFF">
+                        <text size="xlarge" weight="bold" color="#FFFFFF">
                             {challenge.creator_username.charAt(0).toUpperCase()}
                         </text>
                     </vstack>
                 )}
                 
-                {/* AI Message Box - Shows game state, AI feedback, or end game messages */}
+                {/* Message Box */}
                 <vstack 
                     grow
                     padding="medium" 
                     backgroundColor={
-                        isCompleted
-                            ? "#E8F5E9"  // Green for already completed
-                            : isGameOver && !isCompleted
-                                ? "#FFEBEE"  // Red for game over (failed)
+                        isCompleted || (gameState.isGameOver && gameState.isCorrect)
+                            ? "#E8F5E9"
+                            : (isGameOver && !isCompleted) || (gameState.isGameOver && !gameState.isCorrect)
+                                ? "#FFEBEE"
                             : isCreator
-                                ? "#FFF4E6"  // Orange for creator
-                                : gameState.isGameOver && !gameState.isCorrect
-                                    ? "#FFEBEE"  // Red for game over (failed)
-                                    : gameState.isGameOver && gameState.isCorrect
-                                        ? "#E8F5E9"  // Green for success
-                                        : isThinking
-                                            ? "#FFF4E6"  // Orange for thinking
-                                            : gameState.message === "..." 
-                                                ? "#F6F7F8"  // Gray for initial state
-                                                : "#FFEBEE"  // Red for incorrect guess
+                                ? "#FFF4E6"
+                                : isThinking
+                                    ? "#FFF4E6"
+                                    : "#FFFFFF"
                     }
                     cornerRadius="medium"
-                    border="thick"
+                    border="thin"
                     borderColor={
-                        isCompleted
-                            ? "#4CAF50"  // Green border for completed
-                            : isGameOver && !isCompleted
-                                ? "#D32F2F"  // Red border for game over
-                            : isCreator
-                                ? "#FF8C00"  // Orange border for creator
-                                : gameState.isGameOver && !gameState.isCorrect
-                                    ? "#D32F2F"  // Red border for game over
-                                    : gameState.isGameOver && gameState.isCorrect
-                                        ? "#4CAF50"  // Green border for success
-                                        : isThinking
-                                            ? "#FF8C00"  // Orange border for thinking
-                                            : gameState.message === "..." 
-                                                ? "#E0E0E0"  // Gray border for initial
-                                                : "#FF4500"  // Red border for incorrect
+                        isCompleted || (gameState.isGameOver && gameState.isCorrect)
+                            ? "#4CAF50"
+                            : (isGameOver && !isCompleted) || (gameState.isGameOver && !gameState.isCorrect)
+                                ? "#D32F2F"
+                            : "#E0E0E0"
                     }
-                    alignment="start top"
                     gap="small"
-                    minHeight="100px"
-                    maxHeight="140px"
                 >
-                    {/* Already Completed Message */}
                     {isCompleted ? (
-                        <vstack gap="small" alignment="start top" width="100%">
-                            <text size="large" weight="bold" color="#2E7D32" wrap>
-                                Already Completed!
+                        <vstack gap="small" width="100%">
+                            <text size="medium" weight="bold" color="#2E7D32">
+                                ✅ Already Completed!
                             </text>
-                            <text size="medium" color="#1B5E20" wrap>
+                            <text size="small" color="#1B5E20">
                                 You earned {completedScore} points
                             </text>
                         </vstack>
                     ) : isGameOver && !isCompleted ? (
-                        /* Game Over - Failed (loaded from database) */
-                        <vstack gap="small" alignment="start top" width="100%">
-                            <text size="large" weight="bold" color="#D32F2F" wrap>
+                        <vstack gap="small" width="100%">
+                            <text size="medium" weight="bold" color="#D32F2F">
                                 Game Over
                             </text>
-                            <text size="medium" color="#666666" wrap>
-                                You've used all 10 attempts
-                            </text>
-                            <text size="medium" color="#1c1c1c" weight="bold" wrap>
-                                The answer was: {challenge.correct_answer}
+                            <text size="small" color="#666666">
+                                Answer: {challenge.correct_answer}
                             </text>
                         </vstack>
                     ) : isCreator ? (
-                        /* Creator Message */
-                        <vstack gap="small" alignment="start top" width="100%">
-                            <text size="large" weight="bold" color="#FF8C00" wrap>
-                                This is your challenge!
+                        <vstack gap="small" width="100%">
+                            <text size="medium" weight="bold" color="#FF8C00">
+                                Your Challenge
                             </text>
-                            <text size="medium" color="#666666" wrap>
+                            <text size="small" color="#666666">
                                 You can't answer your own challenge
                             </text>
                         </vstack>
                     ) : gameState.isGameOver && !gameState.isCorrect ? (
-                        /* Game Over - Failed */
-                        <vstack gap="small" alignment="start top" width="100%">
-                            <text size="large" weight="bold" color="#D32F2F" wrap>
+                        <vstack gap="small" width="100%">
+                            <text size="medium" weight="bold" color="#D32F2F">
                                 Game Over
                             </text>
-                            <text size="medium" color="#666666" wrap>
-                                You've used all 10 attempts
-                            </text>
-                            <text size="medium" color="#1c1c1c" weight="bold" wrap>
-                                The answer was: {challenge.correct_answer}
+                            <text size="small" color="#666666">
+                                Answer: {challenge.correct_answer}
                             </text>
                         </vstack>
                     ) : gameState.isGameOver && gameState.isCorrect ? (
-                        /* Success Message */
-                        <vstack gap="small" alignment="start top" width="100%">
-                            <text size="large" weight="bold" color="#2E7D32" wrap>
+                        <vstack gap="small" width="100%">
+                            <text size="medium" weight="bold" color="#2E7D32">
                                 🎉 Correct!
                             </text>
-                            <text size="medium" color="#1B5E20" wrap>
+                            <text size="small" color="#1B5E20">
                                 {gameState.message}
                             </text>
                         </vstack>
                     ) : (
-                        /* Regular AI Feedback */
                         <text 
-                            size="medium" 
-                            weight="bold" 
-                            color={
-                                isThinking
-                                    ? "#FF8C00" 
-                                    : gameState.message === "..." 
-                                        ? "#878a8c" 
-                                        : "#D32F2F"
-                            }
+                            size="small" 
+                            color={isThinking ? "#FF8C00" : "#1c1c1c"}
                             wrap
-                            width="100%"
                         >
                             {gameState.message}
                         </text>
@@ -419,8 +388,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                 </vstack>
             </hstack>
 
-            {/* Spacer to push button down */}
-            <spacer size="small" />
+            <spacer grow />
 
             {/* Answer Button or Status */}
             {!gameState.isGameOver && !isCompleted && !isGameOver && !isCreator && (

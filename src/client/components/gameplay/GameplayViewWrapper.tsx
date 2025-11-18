@@ -144,6 +144,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
         }
       } catch (error) {
         console.error('Error during answer submission:', error);
+        context.ui.showToast('⚠️ Error checking answer. Please try again.');
         setGameState((prev) => ({
           ...prev,
           message: '⚠️ Error checking answer. Please try again.',

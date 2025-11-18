@@ -106,7 +106,6 @@ export class UserRepository extends BaseRepository {
 
       return null;
     } catch (error) {
-      console.error('Error getting user rank:', error);
       return null;
     }
   }
@@ -137,7 +136,6 @@ export class UserRepository extends BaseRepository {
       
       return result;
     } catch (error) {
-      console.error('Error batch updating user stats:', error);
       return null;
     }
   }
