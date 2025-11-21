@@ -237,6 +237,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
 
       isProcessing={isProcessing}
       uniquePlayerCount={currentChallenge.players_played || 0}
+      playersCompleted={currentChallenge.players_completed || 0}
     />
   );
 };

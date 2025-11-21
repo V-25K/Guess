@@ -6,7 +6,7 @@
 import type { Context } from '@devvit/public-api';
 
 export abstract class BaseService {
-  constructor(protected context: Context) {}
+  constructor(protected context: Context) { }
 
   /**
    * Execute an operation with error handling
@@ -65,44 +65,44 @@ export abstract class BaseService {
       exponentialBackoff = true,
       onRetry,
     } = options;
-    
+
     let lastError: any;
-    
+
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         return await operation();
       } catch (error) {
         lastError = error;
-        
+
         // Don't retry on the last attempt
         if (attempt < maxRetries - 1) {
           // Calculate delay with exponential backoff
           let delay = exponentialBackoff
             ? initialDelayMs * Math.pow(2, attempt)
             : initialDelayMs;
-          
+
           // Cap the delay at maxDelayMs
           delay = Math.min(delay, maxDelayMs);
-          
+
           // Add jitter to prevent thundering herd
           const jitter = Math.random() * 0.3 * delay;
           delay = delay + jitter;
-          
+
           this.logWarning(
             'RetryLogic',
             `Attempt ${attempt + 1}/${maxRetries} failed. Retrying in ${Math.round(delay)}ms...`
           );
-          
+
           // Call onRetry callback if provided
           if (onRetry) {
             onRetry(attempt + 1, error);
           }
-          
+
           await this.delay(delay);
         }
       }
     }
-    
+
     this.logError('RetryLogic', `All ${maxRetries} attempts failed`);
     throw lastError;
   }
@@ -122,13 +122,13 @@ export abstract class BaseService {
     requiredFields: (keyof T)[]
   ): { isValid: boolean; missingFields: string[] } {
     const missingFields: string[] = [];
-    
+
     for (const field of requiredFields) {
       if (obj[field] === undefined || obj[field] === null || obj[field] === '') {
         missingFields.push(field as string);
       }
     }
-    
+
     return {
       isValid: missingFields.length === 0,
       missingFields,
@@ -151,9 +151,9 @@ export abstract class BaseService {
    * @param message - Info message
    */
   protected logInfo(context: string, message: string): void {
-    console.log(`[${context}] ${message}`);
+    // Info logging removed for production
   }
-  
+
   /**
    * Log warning with context
    * @param context - Service or operation context

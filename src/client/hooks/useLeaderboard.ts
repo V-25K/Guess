@@ -53,20 +53,17 @@ export function useLeaderboard(
   const { data, loading, error } = useAsync<LeaderboardData>(
     async () => {
       try {
-        console.log(`[useLeaderboard] Fetching leaderboard for user ${userId}`);
-        
         // Initialize service
         const userRepo = new UserRepository(context);
         const leaderboardService = new LeaderboardService(context, userRepo);
-        
+
         // Fetch leaderboard with current user
         const result = await leaderboardService.getLeaderboardWithUser(
           userId,
           pageSize,
           0
         );
-        
-        console.log(`[useLeaderboard] Leaderboard loaded: ${result.entries.length} entries`);
+
         return result;
       } catch (err) {
         console.error('Failed to get leaderboard', err);

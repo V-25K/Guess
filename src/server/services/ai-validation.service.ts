@@ -61,10 +61,6 @@ export class AIValidationService extends BaseService {
       const cached = await this.context.redis.get(cacheKey);
       if (cached) {
         const parsed = JSON.parse(cached) as ValidationResult;
-        this.logInfo(
-          "AIValidationService",
-          `Cache hit for guess "${guess}" on challenge ${challenge.id}`
-        );
         return parsed;
       }
     } catch (error) {
@@ -144,7 +140,7 @@ export class AIValidationService extends BaseService {
     // Still tells the model to accept typos/synonyms/plurals.
     const systemPrompt = isAttempt7
       ? `Judge guess vs answer. Accept typos, synonyms, plurals. Reply with JSON: { "judgment": "CORRECT"|"CLOSE"|"INCORRECT", "explanation": string }. On attempt 7, explanation should be a helpful hint (1-2 sentences) using past guesses to guide player without revealing answer.`
-      : `Judge guess vs answer. Accept typos, synonyms, plurals. Reply with JSON: { "judgment": "CORRECT"|"CLOSE"|"INCORRECT", "explanation": string }. Explanation must be 1-3 words, friendly, no answer reveal.`;
+      : `Judge guess vs answer. Accept typos, synonyms, plurals. Reply with JSON: { "judgment": "CORRECT"|"CLOSE"|"INCORRECT", "explanation": string }. Explanation must be 3-6 words, friendly, no answer reveal, must add "close", "nope", "correct" according to the answer.`;
 
     const userPrompt = isAttempt7
       ? `Answer: "${challenge.correct_answer}"\nTags: ${challenge.tags.join(", ")}\nGuess: "${guess}"\nPast guesses: ${pastGuesses.join(", ")}`
@@ -255,11 +251,6 @@ export class AIValidationService extends BaseService {
     const explanation = parsed.explanation as string | null | undefined;
 
     const isCorrect = judgment === "CORRECT";
-
-    this.logInfo(
-      "AIValidationService",
-      `AI judgment: ${judgment} for guess "${guess}" vs answer "${challenge.correct_answer}" (attempt ${attemptNumber})`
-    );
 
     const safeExplanation = explanation || this.getDefaultExplanation(isCorrect);
 
@@ -455,49 +446,6 @@ export class AIValidationService extends BaseService {
     } catch (error) {
       this.logError("AIValidationService.isConfigured", error);
       return false;
-    }
-  }
-
-  /**
-   * Test AI validation with a simple query
-   * Useful for debugging and configuration verification
-   */
-  async testValidation(): Promise<{ success: boolean; message: string }> {
-    try {
-      const testChallenge: Challenge = {
-        id: "test",
-        creator_id: "test",
-        creator_username: "test",
-        title: "Test Challenge",
-        description: "Test",
-        image_url: "test", // Added missing property
-        tags: ["test"],
-        correct_answer: "apple",
-        max_score: 20,
-        score_deduction_per_hint: 5,
-        reddit_post_id: null,
-        created_at: new Date().toISOString(),
-      };
-
-      const result = await this.validateAnswer("apple", testChallenge, 1, []);
-
-      if (result.isCorrect && result.judgment === "CORRECT") {
-        return {
-          success: true,
-          message: "AI validation is working correctly",
-        };
-      } else {
-        return {
-          success: false,
-          message: `AI validation returned unexpected result: ${result.judgment} - ${result.explanation}`,
-        };
-      }
-    } catch (error) {
-      this.logError("AIValidationService.testValidation", error);
-      return {
-        success: false,
-        message: `AI validation test failed: ${error}`,
-      };
     }
   }
 }

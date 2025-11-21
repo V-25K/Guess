@@ -26,6 +26,7 @@ export interface PlayGameViewProps {
     checkingCompletion: boolean;
     isProcessing: boolean;
     uniquePlayerCount: number;
+    playersCompleted: number;
 }
 
 /**
@@ -148,6 +149,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
     checkingCompletion,
     isProcessing,
     uniquePlayerCount,
+    playersCompleted,
 }) => {
     const [enlargedImageIndex, setEnlargedImageIndex] = useState<number | null>(null);
 
@@ -211,7 +213,18 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                             {uniquePlayerCount}
                         </text>
                         <text size="xsmall" color="#878a8c">
-                            Players
+                            Total Plays
+                        </text>
+                    </vstack>
+
+                    <spacer size="small" />
+
+                    <vstack alignment="center middle" gap="none">
+                        <text size="large" weight="bold" color="#4CAF50">
+                            {playersCompleted}
+                        </text>
+                        <text size="xsmall" color="#878a8c">
+                            Completed
                         </text>
                     </vstack>
 
@@ -359,8 +372,8 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                 >
                     {isCompleted ? (
                         <vstack gap="small" width="100%">
-                            <text size="medium" weight="bold" color="#2E7D32">
-                                ✅ Already Completed!
+                            <text size="small" weight="bold" color="#2E7D32">
+                                ✅ Challenge Completed
                             </text>
                             <text size="small" color="#1B5E20">
                                 You earned {completedScore} points

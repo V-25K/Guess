@@ -203,6 +203,10 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             );
 
             // Filter out completed, game over, or user's own challenges
+            // OPTIMIZATION: Fetch all user attempts in one go
+            const userAttempts = await services.attemptService.getUserAttempts(userId);
+            const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
+
             const available: GameChallenge[] = [];
             for (const challenge of gameChallenges) {
                 // Skip challenges created by the current user
@@ -210,14 +214,10 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     continue;
                 }
 
-                try {
-                    const attemptStatus = await services.attemptService.getAttemptStatus(userId, challenge.id);
-                    // Include challenge if not attempted, or if attempted but not completed and not game over
-                    if (!attemptStatus || (!attemptStatus.is_solved && !attemptStatus.game_over)) {
-                        available.push(challenge);
-                    }
-                } catch (error) {
-                    // On error, include the challenge (fail open) - but only if not created by user
+                const attempt = attemptMap.get(challenge.id);
+
+                // Include challenge if not attempted, or if attempted but not completed and not game over
+                if (!attempt || (!attempt.is_solved && !attempt.game_over)) {
                     available.push(challenge);
                 }
             }
@@ -276,6 +276,10 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                 setCurrentChallengeIndex(nextIndex);
             } else {
                 // Refresh available challenges to check if any new ones are available
+                // OPTIMIZATION: Fetch all user attempts in one go instead of N+1 requests
+                const userAttempts = await services.attemptService.getUserAttempts(userId);
+                const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
+
                 const available: GameChallenge[] = [];
                 for (const challenge of challenges) {
                     // Skip challenges created by the current user
@@ -283,13 +287,10 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                         continue;
                     }
 
-                    try {
-                        const attemptStatus = await services.attemptService.getAttemptStatus(userId, challenge.id);
-                        if (!attemptStatus || (!attemptStatus.is_solved && !attemptStatus.game_over)) {
-                            available.push(challenge);
-                        }
-                    } catch (error) {
-                        // On error, include the challenge (fail open) - but only if not created by user
+                    const attempt = attemptMap.get(challenge.id);
+
+                    // Include challenge if not attempted, or if attempted but not completed and not game over
+                    if (!attempt || (!attempt.is_solved && !attempt.game_over)) {
                         available.push(challenge);
                     }
                 }
@@ -349,6 +350,10 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             setChallenges(gameChallenges);
 
             // Refresh available challenges (exclude own challenges)
+            // OPTIMIZATION: Fetch all user attempts in one go
+            const userAttempts = await services.attemptService.getUserAttempts(userId);
+            const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
+
             const available: GameChallenge[] = [];
             for (const challenge of gameChallenges) {
                 // Skip challenges created by the current user
@@ -356,14 +361,10 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     continue;
                 }
 
-                try {
-                    const attemptStatus = await services.attemptService.getAttemptStatus(userId, challenge.id);
-                    if (!attemptStatus || (!attemptStatus.is_solved && !attemptStatus.game_over)) {
-                        available.push(challenge);
-                    }
-                } catch (error) {
-                    console.error(`[Main] Error checking attempt status:`, error);
-                    // On error, include the challenge (fail open) - but only if not created by user
+                const attempt = attemptMap.get(challenge.id);
+
+                // Include challenge if not attempted, or if attempted but not completed and not game over
+                if (!attempt || (!attempt.is_solved && !attempt.game_over)) {
                     available.push(challenge);
                 }
             }

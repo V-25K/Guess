@@ -48,20 +48,17 @@ export function useUserProfile(
   const { data: profile, loading, error } = useAsync<UserProfile>(
     async () => {
       try {
-        console.log(`[useUserProfile] Fetching profile for user ${userId}`);
-        
         // Initialize service
         const userRepo = new UserRepository(context);
         const userService = new UserService(context, userRepo);
-        
+
         // Fetch profile (will auto-create if username is provided)
         const fetchedProfile = await userService.getUserProfile(userId, username);
-        
+
         if (!fetchedProfile) {
           throw new Error('Failed to load profile');
         }
-        
-        console.log(`[useUserProfile] Profile loaded for user ${userId}`);
+
         return fetchedProfile;
       } catch (err) {
         console.error('Failed to get user profile', err);

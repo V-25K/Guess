@@ -308,6 +308,11 @@ export class AttemptService extends BaseService {
         // Invalidate user cache since profile was updated
         this.userService.invalidateUserCache(userId);
 
+        // Increment challenge's players_completed count
+        if (this.challengeRepo) {
+          await this.challengeRepo.incrementPlayersCompleted(challengeId);
+        }
+
         this.logInfo(
           'AttemptService',
           `User ${userId} completed challenge ${challengeId} with ${attemptsMade} attempts. Earned ${points} points and ${experience} exp.`

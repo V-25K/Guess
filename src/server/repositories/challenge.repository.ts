@@ -124,4 +124,13 @@ export class ChallengeRepository extends BaseRepository {
       p_challenge_id: challengeId,
     });
   }
+
+  /**
+   * Increment the players_completed count for a challenge
+   */
+  async incrementPlayersCompleted(challengeId: string): Promise<boolean> {
+    return this.executeBooleanFunction('increment_players_completed', {
+      p_challenge_id: challengeId,
+    });
+  }
 }
