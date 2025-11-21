@@ -7,7 +7,7 @@ import type { Context } from '@devvit/public-api';
 import { BaseService } from './base.service.js';
 import { UserRepository } from '../repositories/user.repository.js';
 import type { UserProfile } from '../../shared/models/user.types.js';
-import { Cache, createCacheKey } from '../../shared/utils/cache.js';
+import { RedisCache } from '../utils/redis-cache.js';
 import { createPaginatedResult, DEFAULT_PAGE_SIZE, type PaginatedResult } from '../../shared/utils/pagination.js';
 
 export type LeaderboardEntry = {
@@ -21,7 +21,7 @@ export type LeaderboardEntry = {
 };
 
 export class LeaderboardService extends BaseService {
-  private leaderboardCache: Cache<LeaderboardEntry[]>;
+  private leaderboardCache: RedisCache;
   private readonly LEADERBOARD_CACHE_TTL = 60 * 1000; // 1 minute cache
 
   constructor(
@@ -29,7 +29,7 @@ export class LeaderboardService extends BaseService {
     private userRepo: UserRepository
   ) {
     super(context);
-    this.leaderboardCache = new Cache<LeaderboardEntry[]>(this.LEADERBOARD_CACHE_TTL);
+    this.leaderboardCache = new RedisCache(context.redis);
   }
 
   /**
@@ -39,16 +39,16 @@ export class LeaderboardService extends BaseService {
   async getTopPlayers(limit: number = 10, offset: number = 0): Promise<LeaderboardEntry[]> {
     const result = await this.withErrorHandling(
       async () => {
-        const cacheKey = createCacheKey('leaderboard', limit, offset);
-        
-        const cached = this.leaderboardCache.get(cacheKey);
+        const cacheKey = `leaderboard:${limit}:${offset}`;
+
+        const cached = await this.leaderboardCache.get<LeaderboardEntry[]>(cacheKey);
         if (cached) {
           this.logInfo('LeaderboardService', `Returning cached leaderboard (limit: ${limit}, offset: ${offset})`);
           return cached;
         }
-        
+
         const users = await this.userRepo.findByPoints(limit, offset);
-        
+
         const entries: LeaderboardEntry[] = users.map((user, index) => ({
           rank: offset + index + 1,
           userId: user.user_id,
@@ -58,10 +58,10 @@ export class LeaderboardService extends BaseService {
           challengesSolved: user.challenges_solved,
           isCurrentUser: false,
         }));
-        
-        this.leaderboardCache.set(cacheKey, entries);
+
+        await this.leaderboardCache.set(cacheKey, entries, this.LEADERBOARD_CACHE_TTL);
         this.logInfo('LeaderboardService', `Cached leaderboard (limit: ${limit}, offset: ${offset})`);
-        
+
         return entries;
       },
       'Failed to get top players'
@@ -89,11 +89,14 @@ export class LeaderboardService extends BaseService {
   async refreshLeaderboard(): Promise<void> {
     try {
       this.logInfo('LeaderboardService', 'Refreshing leaderboard cache');
-      
-      this.leaderboardCache.clear();
-      
+
+      // Note: With Redis we can't easily clear all keys matching a pattern without SCAN
+      // So we just refresh the default view (top 10)
+      const cacheKey = `leaderboard:10:0`;
+      await this.leaderboardCache.delete(cacheKey);
+
       await this.getTopPlayers(10, 0);
-      
+
       this.logInfo('LeaderboardService', 'Leaderboard cache refreshed');
     } catch (error) {
       this.logError('LeaderboardService.refreshLeaderboard', error);
@@ -111,20 +114,20 @@ export class LeaderboardService extends BaseService {
   ): Promise<{ entries: LeaderboardEntry[]; userEntry: LeaderboardEntry | null }> {
     try {
       const topPlayers = await this.getTopPlayers(limit, offset);
-      
+
       const entries = topPlayers.map(entry => ({
         ...entry,
         isCurrentUser: entry.userId === userId,
       }));
-      
+
       const userInList = entries.some(entry => entry.userId === userId);
-      
+
       let userEntry: LeaderboardEntry | null = null;
-      
+
       if (!userInList) {
         const userProfile = await this.userRepo.findById(userId);
         const userRank = await this.getUserRank(userId);
-        
+
         if (userProfile && userRank) {
           userEntry = {
             rank: userRank,
@@ -137,7 +140,7 @@ export class LeaderboardService extends BaseService {
           };
         }
       }
-      
+
       return { entries, userEntry };
     } catch (error) {
       this.logError('LeaderboardService.getLeaderboardWithUser', error);
@@ -157,7 +160,7 @@ export class LeaderboardService extends BaseService {
     try {
       const topPlayers = await this.getTopPlayers(1, 0);
       const topScore = topPlayers.length > 0 ? topPlayers[0].totalPoints : 0;
-      
+
       return {
         totalPlayers: 0, // Would need COUNT query
         topScore,
@@ -174,20 +177,18 @@ export class LeaderboardService extends BaseService {
   }
 
   /**
-   * Clear the leaderboard cache
-   * Useful for testing or manual cache invalidation
+   * Clear the leaderboard cache - NOT SUPPORTED IN REDIS IMPLEMENTATION
    */
-  clearCache(): void {
-    this.leaderboardCache.clear();
-    this.logInfo('LeaderboardService', 'Cache cleared');
+  async clearCache(): Promise<void> {
+    this.logInfo('LeaderboardService', 'Clear cache not supported with Redis');
   }
 
   /**
-   * Get cache statistics
+   * Get cache statistics - NOT SUPPORTED IN REDIS IMPLEMENTATION
    */
   getCacheStats(): { size: number; ttl: number } {
     return {
-      size: this.leaderboardCache.size(),
+      size: 0,
       ttl: this.LEADERBOARD_CACHE_TTL,
     };
   }
@@ -204,19 +205,19 @@ export class LeaderboardService extends BaseService {
       async () => {
         const limit = Math.max(1, Math.min(pageSize, 100));
         const offset = Math.max(0, (page - 1) * limit);
-        
+
         const entries = await this.getTopPlayers(limit + 1, offset);
-        
+
         const hasMore = entries.length > limit;
         const data = hasMore ? entries.slice(0, limit) : entries;
-        
+
         return createPaginatedResult(data, limit, {
           currentOffset: offset,
         });
       },
       'Failed to get paginated leaderboard'
     );
-    
+
     return result || createPaginatedResult([], pageSize);
   }
 }

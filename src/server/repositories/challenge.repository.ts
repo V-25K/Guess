@@ -20,34 +20,34 @@ export class ChallengeRepository extends BaseRepository {
   async findAll(filters?: ChallengeFilters): Promise<Challenge[]> {
     try {
       const config = await this.getSupabaseConfig();
-      
+
       // Build query URL
       let url = `${config.url}/rest/v1/${this.TABLE}?select=*`;
-      
+
       // Add tag filtering if specified
       if (filters?.tags && filters.tags.length > 0) {
         // Use cs (contains) operator for array containment
         const tagFilter = `{${filters.tags.join(',')}}`;
         url += `&tags=cs.${tagFilter}`;
       }
-      
+
       // Add creator filter if specified
       if (filters?.creatorId) {
         url += `&creator_id=eq.${filters.creatorId}`;
       }
-      
+
       // Add ordering
       url += '&order=created_at.desc';
-      
+
       // Add pagination
       if (filters?.limit) {
         url += `&limit=${filters.limit}`;
       }
-      
+
       if (filters?.offset) {
         url += `&offset=${filters.offset}`;
       }
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -115,5 +115,13 @@ export class ChallengeRepository extends BaseRepository {
    */
   async deleteChallenge(challengeId: string): Promise<boolean> {
     return super.delete(this.TABLE, { id: challengeId });
+  }
+  /**
+   * Increment the players_played count for a challenge
+   */
+  async incrementPlayersPlayed(challengeId: string): Promise<boolean> {
+    return this.executeBooleanFunction('increment_players_played', {
+      p_challenge_id: challengeId,
+    });
   }
 }

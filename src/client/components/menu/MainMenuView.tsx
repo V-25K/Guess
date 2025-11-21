@@ -81,11 +81,9 @@ export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = (
 
         <button
           onPress={() => {
-            console.log(`[MainMenu] Create button clicked - Level: ${userLevel}, IsMod: ${isModerator}, Required: ${REQUIRED_LEVEL}, Can Create: ${canCreateChallenge}`);
             
             // First check: Is user a moderator? If yes, allow creation (subject to rate limit)
             if (isModerator === true) {
-              console.log('[MainMenu] User is moderator - bypassing level check');
               if (!canCreateChallenge) {
                 context.ui.showToast('Please wait before creating another challenge');
               } else {
@@ -96,7 +94,6 @@ export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = (
             
             // Second check: Is user level high enough?
             if (userLevel < REQUIRED_LEVEL) {
-              console.log(`[MainMenu] User level too low - Level: ${userLevel}, Required: ${REQUIRED_LEVEL}`);
               context.ui.showToast(
                 `Reach level ${REQUIRED_LEVEL} to create challenges (Current: Level ${userLevel})`
               );

@@ -1,7 +1,7 @@
- /**
- * Challenge Service
- * Handles all business logic related to challenge creation, retrieval, and management
- */
+/**
+* Challenge Service
+* Handles all business logic related to challenge creation, retrieval, and management
+*/
 
 import type { Context } from '@devvit/public-api';
 import { Devvit } from '@devvit/public-api';
@@ -11,14 +11,19 @@ import { UserService } from './user.service.js';
 import { getCreationReward } from '../../shared/utils/reward-calculator.js';
 import type { Challenge, ChallengeCreate, ChallengeFilters } from '../../shared/models/challenge.types.js';
 import { createPaginatedResult, DEFAULT_PAGE_SIZE, type PaginatedResult } from '../../shared/utils/pagination.js';
+import { RedisCache } from '../utils/redis-cache.js';
 
 export class ChallengeService extends BaseService {
+  private feedCache: RedisCache;
+  private readonly FEED_CACHE_TTL = 30 * 1000; // 30 seconds
+
   constructor(
     context: Context,
     private challengeRepo: ChallengeRepository,
     private userService: UserService
   ) {
     super(context);
+    this.feedCache = new RedisCache(context.redis);
   }
 
   /**
@@ -38,7 +43,7 @@ export class ChallengeService extends BaseService {
           'correct_answer',
           'tags',
         ]);
-        
+
         if (!validation.isValid) {
           this.logError(
             'ChallengeService.createChallenge',
@@ -46,7 +51,7 @@ export class ChallengeService extends BaseService {
           );
           return null;
         }
-        
+
         // Validate image count (2-5 images)
         const imageUrls = challenge.image_url.split(',').map(url => url.trim()).filter(url => url.length > 0);
         if (imageUrls.length < 2 || imageUrls.length > 5) {
@@ -56,7 +61,7 @@ export class ChallengeService extends BaseService {
           );
           return null;
         }
-        
+
         // Validate tags (at least one tag required)
         if (!challenge.tags || challenge.tags.length === 0) {
           this.logError(
@@ -65,7 +70,7 @@ export class ChallengeService extends BaseService {
           );
           return null;
         }
-        
+
         // Validate title length
         if (challenge.title.length < 3 || challenge.title.length > 200) {
           this.logError(
@@ -74,7 +79,7 @@ export class ChallengeService extends BaseService {
           );
           return null;
         }
-        
+
         // Validate answer length
         if (challenge.correct_answer.length < 1 || challenge.correct_answer.length > 500) {
           this.logError(
@@ -83,7 +88,7 @@ export class ChallengeService extends BaseService {
           );
           return null;
         }
-        
+
         // Check rate limit (24-hour window)
         const rateLimitCheck = await this.userService.canCreateChallenge(challenge.creator_id);
         if (!rateLimitCheck.canCreate) {
@@ -94,7 +99,7 @@ export class ChallengeService extends BaseService {
           );
           return null;
         }
-        
+
         // Create the challenge in database with retry logic
         const createdChallenge = await this.withRetry(
           () => this.challengeRepo.create(challenge),
@@ -109,15 +114,15 @@ export class ChallengeService extends BaseService {
             },
           }
         );
-        
+
         if (!createdChallenge) {
           this.logError('ChallengeService.createChallenge', 'Failed to create challenge in database after retries');
           return null;
         }
-        
+
         // Note: Reddit post creation is handled separately to avoid ServerCallRequired errors
         // The post will be created by the client after successful challenge creation
-        
+
         // Award creation points and update statistics
         const reward = getCreationReward();
         await this.userService.awardPoints(
@@ -125,15 +130,18 @@ export class ChallengeService extends BaseService {
           reward.points,
           reward.exp
         );
-        
+
         // Update challenges created count and timestamp
         await this.userService.incrementChallengesCreated(challenge.creator_id);
-        
+
         this.logInfo(
           'ChallengeService',
           `Challenge created by ${challenge.creator_username} (ID: ${createdChallenge.id})`
         );
-        
+
+        // Invalidate feed cache
+        await this.invalidateFeedCache();
+
         return createdChallenge;
       },
       'Failed to create challenge'
@@ -148,7 +156,7 @@ export class ChallengeService extends BaseService {
     return this.withBooleanErrorHandling(
       async () => {
         const success = await this.challengeRepo.update(challengeId, { reddit_post_id: postId });
-        
+
         if (success) {
           this.logInfo(
             'ChallengeService',
@@ -160,7 +168,7 @@ export class ChallengeService extends BaseService {
             `Failed to update challenge ${challengeId} with post ID`
           );
         }
-        
+
         return success;
       },
       'Failed to update challenge post ID'
@@ -180,12 +188,12 @@ export class ChallengeService extends BaseService {
           this.logError('ChallengeService.createRedditPostForChallenge', `Challenge ${challengeId} not found`);
           return null;
         }
-        
+
         const postId = await this.createRedditPost(challenge);
-        
+
         if (postId) {
           const updateSuccess = await this.challengeRepo.update(challenge.id, { reddit_post_id: postId });
-          
+
           if (updateSuccess) {
             this.logInfo(
               'ChallengeService',
@@ -198,7 +206,7 @@ export class ChallengeService extends BaseService {
             );
           }
         }
-        
+
         return postId;
       },
       'Failed to create Reddit post for challenge'
@@ -213,15 +221,15 @@ export class ChallengeService extends BaseService {
     try {
       // Get subreddit name from context
       const subredditName = this.context.subredditName;
-      
+
       if (!subredditName) {
         this.logError('ChallengeService.createRedditPost', 'No subreddit name available');
         return null;
       }
-      
+
       // Format post title
       const postTitle = this.formatPostTitle(challenge);
-      
+
       // Submit post to Reddit with preview and challenge ID in postData
       const post = await this.context.reddit.submitPost({
         subredditName: subredditName,
@@ -232,7 +240,7 @@ export class ChallengeService extends BaseService {
           openDirectly: true,
         },
       });
-      
+
       return post.id;
     } catch (error) {
       this.logError('ChallengeService.createRedditPost', `Error creating Reddit post: ${error}`);
@@ -245,7 +253,7 @@ export class ChallengeService extends BaseService {
    * Creates an engaging title with emojis and challenge info
    */
   private formatPostTitle(challenge: Challenge): string {
-    
+
     // Format: "🎯 [Challenge Title] by u/username"
     return `$${challenge.title}`;
   }
@@ -256,20 +264,20 @@ export class ChallengeService extends BaseService {
    */
   private formatPostPreview(challenge: Challenge): JSX.Element {
     return (
-      <vstack 
-        width="100%" 
-        height="100%" 
-        alignment="center middle" 
+      <vstack
+        width="100%"
+        height="100%"
+        alignment="center middle"
         backgroundColor="#F6F7F8"
         padding="large"
         gap="medium"
       >
-        <text size="xxlarge" weight="bold" color="#FF4500">
-          🎮 Guess The Link
-        </text>
-        <text size="large" weight="bold" color="#1c1c1c" alignment="center">
-          {challenge.title}
-        </text>
+        <image
+          url="logo.png"
+          imageHeight={100}
+          imageWidth={240}
+          resizeMode="fit"
+        />
         <text size="medium" color="#878a8c" alignment="center">
           by u/{challenge.creator_username}
         </text>
@@ -284,21 +292,37 @@ export class ChallengeService extends BaseService {
   /**
    * Get challenges with optional filters
    * Returns paginated results
+   * Caches the result if no filters are applied (main feed)
    */
   async getChallenges(filters?: ChallengeFilters): Promise<Challenge[]> {
     const result = await this.withErrorHandling(
       async () => {
-        return this.challengeRepo.findAll(filters);
+        // Only cache if no filters are applied (main feed)
+        const isMainFeed = !filters || Object.keys(filters).length === 0;
+        const cacheKey = 'feed:all';
+
+        if (isMainFeed) {
+          const cached = await this.feedCache.get<Challenge[]>(cacheKey);
+          if (cached) {
+            this.logInfo('ChallengeService', 'Returning cached feed');
+            return cached;
+          }
+        }
+
+        const challenges = await this.challengeRepo.findAll(filters);
+
+        if (isMainFeed && challenges) {
+          await this.feedCache.set(cacheKey, challenges, this.FEED_CACHE_TTL);
+          this.logInfo('ChallengeService', 'Cached feed');
+        }
+
+        return challenges;
       },
       'Failed to get challenges'
     );
+
     return result || [];
   }
-
-  /**
-   * Get challenges with pagination support
-   * Returns paginated results with metadata
-   */
   async getChallengesPaginated(
     filters?: ChallengeFilters,
     page: number = 1,
@@ -309,25 +333,25 @@ export class ChallengeService extends BaseService {
         // Calculate offset
         const limit = Math.max(1, Math.min(pageSize, 100));
         const offset = Math.max(0, (page - 1) * limit);
-        
+
         // Fetch challenges with one extra to check if there are more
         const challenges = await this.challengeRepo.findAll({
           ...filters,
           limit: limit + 1,
           offset,
         });
-        
+
         // Check if there are more results
         const hasMore = challenges.length > limit;
         const data = hasMore ? challenges.slice(0, limit) : challenges;
-        
+
         return createPaginatedResult(data, limit, {
           currentOffset: offset,
         });
       },
       'Failed to get paginated challenges'
     );
-    
+
     return result || createPaginatedResult([], pageSize);
   }
 
@@ -384,7 +408,7 @@ export class ChallengeService extends BaseService {
           );
           return [];
         }
-        
+
         // Validate URLs
         const validUrls = imageUrls.filter(url => {
           try {
@@ -394,14 +418,14 @@ export class ChallengeService extends BaseService {
             return false;
           }
         });
-        
+
         if (validUrls.length !== imageUrls.length) {
           this.logError(
             'ChallengeService.uploadChallengeImages',
             'Some image URLs are invalid'
           );
         }
-        
+
         return validUrls;
       },
       'Failed to upload challenge images'
@@ -418,12 +442,12 @@ export class ChallengeService extends BaseService {
       async () => {
         // Get the challenge to verify ownership
         const challenge = await this.challengeRepo.findById(id);
-        
+
         if (!challenge) {
           this.logError('ChallengeService.deleteChallenge', `Challenge ${id} not found`);
           return false;
         }
-        
+
         // Verify ownership
         if (challenge.creator_id !== userId) {
           this.logError(
@@ -432,14 +456,14 @@ export class ChallengeService extends BaseService {
           );
           return false;
         }
-        
+
         // Delete the challenge
         const success = await this.challengeRepo.deleteChallenge(id);
-        
+
         if (success) {
           this.logInfo('ChallengeService', `Challenge ${id} deleted by user ${userId}`);
         }
-        
+
         return success;
       },
       'Failed to delete challenge'
@@ -452,37 +476,37 @@ export class ChallengeService extends BaseService {
    */
   validateChallengeData(challenge: ChallengeCreate): { isValid: boolean; errors: string[] } {
     const errors: string[] = [];
-    
+
     // Check required fields
     if (!challenge.title || challenge.title.trim().length === 0) {
       errors.push('Title is required');
     }
-    
+
     if (!challenge.correct_answer || challenge.correct_answer.trim().length === 0) {
       errors.push('Answer is required');
     }
-    
+
     if (!challenge.image_url || challenge.image_url.trim().length === 0) {
       errors.push('At least one image is required');
     }
-    
+
     if (!challenge.tags || challenge.tags.length === 0) {
       errors.push('At least one tag is required');
     }
-    
+
     // Check field lengths
     if (challenge.title && (challenge.title.length < 3 || challenge.title.length > 200)) {
       errors.push('Title must be between 3 and 200 characters');
     }
-    
+
     if (challenge.correct_answer && (challenge.correct_answer.length < 1 || challenge.correct_answer.length > 500)) {
       errors.push('Answer must be between 1 and 500 characters');
     }
-    
+
     if (challenge.description && challenge.description.length > 1000) {
       errors.push('Description must be less than 1000 characters');
     }
-    
+
     // Check image count
     if (challenge.image_url) {
       const imageUrls = challenge.image_url.split(',').map(url => url.trim()).filter(url => url.length > 0);
@@ -493,10 +517,21 @@ export class ChallengeService extends BaseService {
         errors.push('Maximum 5 images allowed');
       }
     }
-    
+
     return {
       isValid: errors.length === 0,
       errors,
     };
+  }
+  /**
+   * Invalidate the feed cache
+   */
+  async invalidateFeedCache(): Promise<void> {
+    try {
+      await this.feedCache.delete('feed:all');
+      this.logInfo('ChallengeService', 'Invalidated feed cache');
+    } catch (error) {
+      this.logError('ChallengeService.invalidateFeedCache', error);
+    }
   }
 }

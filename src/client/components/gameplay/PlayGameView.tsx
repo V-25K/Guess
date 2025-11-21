@@ -24,6 +24,8 @@ export interface PlayGameViewProps {
     isGameOver: boolean;
     completedScore: number;
     checkingCompletion: boolean;
+    isProcessing: boolean;
+    uniquePlayerCount: number;
 }
 
 /**
@@ -36,7 +38,7 @@ const ImageCell: Devvit.BlockComponent<{
     sizePx: number;
     onEnlarge: (index: number) => void;
 }> = ({ image, index, sizePx, onEnlarge }) => (
-    <vstack 
+    <vstack
         width={`${sizePx}px`}
         height={`${sizePx}px`}
         backgroundColor="#FFFFFF"
@@ -49,10 +51,10 @@ const ImageCell: Devvit.BlockComponent<{
             onEnlarge(index);
         }}
     >
-        <image 
-            url={image.url} 
-            imageWidth={sizePx} 
-            imageHeight={sizePx} 
+        <image
+            url={image.url}
+            imageWidth={sizePx}
+            imageHeight={sizePx}
             resizeMode="cover"
             width={`${sizePx}px`}
             height={`${sizePx}px`}
@@ -144,32 +146,33 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
     isGameOver,
     completedScore,
     checkingCompletion,
+    isProcessing,
+    uniquePlayerCount,
 }) => {
-    const isThinking = gameState.message === '🤔 Thinking...';
     const [enlargedImageIndex, setEnlargedImageIndex] = useState<number | null>(null);
-    
+
     const handleEnlargeImage = (index: number) => {
         setEnlargedImageIndex(index);
     };
-    
+
     const handleCloseEnlarged = () => {
         setEnlargedImageIndex(null);
     };
-    
+
     // If an image is enlarged, show the overlay
     if (enlargedImageIndex !== null) {
         const enlargedImage = challenge.images[enlargedImageIndex];
         return (
-            <vstack 
-                width="100%" 
-                height="100%" 
+            <vstack
+                width="100%"
+                height="100%"
                 backgroundColor="rgba(0, 0, 0, 0.9)"
                 alignment="center middle"
                 onPress={handleCloseEnlarged}
                 padding="medium"
                 gap="medium"
             >
-                <image 
+                <image
                     url={enlargedImage.url}
                     imageWidth={300}
                     imageHeight={300}
@@ -177,7 +180,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                     height="300px"
                     resizeMode="fit"
                 />
-                <button 
+                <button
                     onPress={handleCloseEnlarged}
                     appearance="secondary"
                     size="medium"
@@ -187,19 +190,31 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
             </vstack>
         );
     }
-    
+
     return (
         <vstack padding="medium" gap="medium" width="100%" height="100%" backgroundColor="#F6F7F8">
             {/* Compact Header */}
             <vstack gap="small" width="100%">
                 {/* Top row: Back button and score */}
                 <hstack width="100%" alignment="middle">
-                    <button 
-                        onPress={onBackToMenu} 
+                    <button
+                        onPress={onBackToMenu}
                         appearance="secondary"
                         size="small"
                         icon="back"
                     />
+
+                    <spacer grow />
+
+                    <vstack alignment="center middle" gap="none">
+                        <text size="large" weight="bold" color="#1c1c1c">
+                            {uniquePlayerCount}
+                        </text>
+                        <text size="xsmall" color="#878a8c">
+                            Players
+                        </text>
+                    </vstack>
+
                     <spacer grow />
                     <vstack alignment="end middle" gap="none">
                         <text size="xlarge" weight="bold" color="#4CAF50">
@@ -219,8 +234,8 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
 
                 {/* Description (if provided) */}
                 {challenge.description && (
-                    <vstack 
-                        width="100%" 
+                    <vstack
+                        width="100%"
                         padding="small"
                         backgroundColor="#FFFFFF"
                         cornerRadius="small"
@@ -240,7 +255,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                         <>
                             <text size="xsmall" color="#878a8c">•</text>
                             {challenge.tags.slice(0, 2).map((tag, index) => (
-                                <hstack 
+                                <hstack
                                     key={tag}
                                     padding="xsmall"
                                     backgroundColor="#E8F5E9"
@@ -255,15 +270,26 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
             </vstack>
 
             {/* Image Grid */}
-            <ImageGrid 
-                images={challenge.images} 
+            <ImageGrid
+                images={challenge.images}
                 onEnlarge={handleEnlargeImage}
             />
 
+            {/* Image hint text */}
+            <hstack
+                width="100%"
+                alignment="center middle"
+                padding="xsmall"
+            >
+                <text size="xsmall" color="#878a8c" alignment="center">
+                    💡 Tap any image to view it larger
+                </text>
+            </hstack>
+
             {/* Low-attempt warning */}
             {attemptsRemaining <= 3 && attemptsRemaining > 0 && !gameState.isGameOver && (
-                <hstack 
-                    padding="small" 
+                <hstack
+                    padding="small"
                     backgroundColor="#FFF4E6"
                     cornerRadius="small"
                     width="100%"
@@ -276,14 +302,14 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
             )}
 
             {/* Message Box with Avatar */}
-            <hstack 
+            <hstack
                 width="100%"
                 gap="small"
                 alignment="start top"
             >
                 {/* Creator Avatar */}
                 {challenge.creator_avatar_url ? (
-                    <image 
+                    <image
                         url={challenge.creator_avatar_url}
                         imageWidth={60}
                         imageHeight={60}
@@ -292,9 +318,9 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                         resizeMode="cover"
                     />
                 ) : (
-                    <vstack 
-                        width="60px" 
-                        height="60px" 
+                    <vstack
+                        width="60px"
+                        height="60px"
                         backgroundColor="#FF4500"
                         cornerRadius="full"
                         alignment="center middle"
@@ -304,21 +330,21 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                         </text>
                     </vstack>
                 )}
-                
+
                 {/* Message Box */}
-                <vstack 
+                <vstack
                     grow
-                    padding="medium" 
+                    padding="medium"
                     backgroundColor={
                         isCompleted || (gameState.isGameOver && gameState.isCorrect)
                             ? "#E8F5E9"
                             : (isGameOver && !isCompleted) || (gameState.isGameOver && !gameState.isCorrect)
                                 ? "#FFEBEE"
-                            : isCreator
-                                ? "#FFF4E6"
-                                : isThinking
+                                : isCreator
                                     ? "#FFF4E6"
-                                    : "#FFFFFF"
+                                    : isProcessing
+                                        ? "#FFF4E6"
+                                        : "#FFFFFF"
                     }
                     cornerRadius="medium"
                     border="thin"
@@ -327,7 +353,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                             ? "#4CAF50"
                             : (isGameOver && !isCompleted) || (gameState.isGameOver && !gameState.isCorrect)
                                 ? "#D32F2F"
-                            : "#E0E0E0"
+                                : "#E0E0E0"
                     }
                     gap="small"
                 >
@@ -377,9 +403,9 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                             </text>
                         </vstack>
                     ) : (
-                        <text 
-                            size="small" 
-                            color={isThinking ? "#FF8C00" : "#1c1c1c"}
+                        <text
+                            size="small"
+                            color={isProcessing ? "#FF8C00" : "#1c1c1c"}
                             wrap
                         >
                             {gameState.message}
@@ -396,13 +422,12 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                     {checkingCompletion ? (
                         <text size="small" color="#878a8c">Checking status...</text>
                     ) : (
-                        <button 
+                        <button
                             onPress={onSubmitAnswer}
                             appearance="primary"
                             size="medium"
-                            disabled={isThinking}
                         >
-                            {isThinking ? '⏳ Checking...' : '✍️ Click to Answer'}
+                            ✍️ Click to Answer
                         </button>
                     )}
                 </hstack>

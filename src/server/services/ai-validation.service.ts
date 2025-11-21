@@ -28,27 +28,56 @@ export type ValidationResult = {
 };
 
 export class AIValidationService extends BaseService {
+  // Use Gemini 2.5 Flash model
   private readonly GEMINI_API_URL =
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent";
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
   private readonly MAX_RETRIES = 2;
   private readonly RETRY_DELAY_MS = 1000;
+  // Cache TTL for validation results (1 hour)
+  private readonly CACHE_TTL_SECONDS = 3600;
 
   constructor(context: Context) {
     super(context);
   }
 
   /**
-   * Validate a player's guess against the correct answer using AI
-   * Falls back to simple string matching if AI fails
+   * Validate a player's guess against the correct answer using AI.
+   * - Uses Redis caching to avoid repeated validations for the same guess/answer.
+   * - Uses attempt-based prompts: short responses for attempts 1-6, richer hint on attempt 7.
+   * - Falls back to simple string matching if AI fails.
    */
   async validateAnswer(
     guess: string,
-    challenge: Challenge
+    challenge: Challenge,
+    attemptNumber: number = 1,
+    pastGuesses: string[] = []
   ): Promise<ValidationResult> {
+    // Normalized guess for cache key
+    const normalizedGuess = guess.toLowerCase().trim();
+    const cacheKey = `validation:${challenge.id}:${normalizedGuess}`;
+
+    // 1) Try cache first (cheap, token-free)
+    try {
+      const cached = await this.context.redis.get(cacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached) as ValidationResult;
+        this.logInfo(
+          "AIValidationService",
+          `Cache hit for guess "${guess}" on challenge ${challenge.id}`
+        );
+        return parsed;
+      }
+    } catch (error) {
+      this.logError(
+        "AIValidationService.validateAnswer",
+        "Failed to read from cache, continuing without cache"
+      );
+    }
+
     try {
       // Try AI validation with retry logic
       const aiResult = await this.withRetry(
-        () => this.validateWithAI(guess, challenge),
+        () => this.validateWithAI(guess, challenge, attemptNumber, pastGuesses),
         {
           maxRetries: this.MAX_RETRIES,
           initialDelayMs: this.RETRY_DELAY_MS,
@@ -57,12 +86,28 @@ export class AIValidationService extends BaseService {
       );
 
       // Ensure explanation is never null or undefined
-      return {
+      const result: ValidationResult = {
         ...aiResult,
         explanation:
           aiResult.explanation ||
           this.getDefaultExplanation(aiResult.isCorrect),
       };
+
+      // 2) Store in cache (fire-and-forget)
+      try {
+        await this.context.redis.set(
+          cacheKey,
+          JSON.stringify(result),
+          { expiration: new Date(Date.now() + this.CACHE_TTL_SECONDS * 1000) }
+        );
+      } catch (error) {
+        this.logError(
+          "AIValidationService.validateAnswer",
+          "Failed to write to cache, continuing without cache"
+        );
+      }
+
+      return result;
     } catch (error) {
       this.logError(
         "AIValidationService.validateAnswer",
@@ -70,7 +115,7 @@ export class AIValidationService extends BaseService {
       );
 
       // Fall back to simple validation
-      return this.fallbackValidation(guess, challenge);
+      return this.fallbackValidation(guess, challenge, attemptNumber, pastGuesses);
     }
   }
 
@@ -79,7 +124,9 @@ export class AIValidationService extends BaseService {
    */
   private async validateWithAI(
     guess: string,
-    challenge: Challenge
+    challenge: Challenge,
+    attemptNumber: number,
+    pastGuesses: string[]
   ): Promise<ValidationResult> {
     // Get Gemini API key from settings
     const settings = await this.context.settings.getAll();
@@ -90,31 +137,27 @@ export class AIValidationService extends BaseService {
       throw new Error("AI validation not configured");
     }
 
-    const systemPrompt = `You are a strict game judge for a 'guess the link' game. You will receive a player's guess, the correct answer, and guiding tags.
-Your task is to judge the guess and provide a brief, one-sentence explanation.
-Do NOT reveal the correct answer or any part of it in your explanation.
+    // Attempt 7: richer hint based on past guesses
+    const isAttempt7 = attemptNumber === 7;
 
-**JUDGMENT RULES:**
-- 'CORRECT': The guess is an exact match or an equally specific, common synonym.
-- 'CLOSE': The guess is relevant but **too broad or over-generalized** (e.g., "Parts of a computer" instead of "Computer Peripherals") or has a minor inaccuracy. Give a small, subtle hint about the level of specificity needed.
-- 'INCORRECT': The guess is completely off-topic. Encourage them to try again.
+    // Short, token-efficient instructions for attempts 1-6.
+    // Still tells the model to accept typos/synonyms/plurals.
+    const systemPrompt = isAttempt7
+      ? `Judge guess vs answer. Accept typos, synonyms, plurals. Reply with JSON: { "judgment": "CORRECT"|"CLOSE"|"INCORRECT", "explanation": string }. On attempt 7, explanation should be a helpful hint (1-2 sentences) using past guesses to guide player without revealing answer.`
+      : `Judge guess vs answer. Accept typos, synonyms, plurals. Reply with JSON: { "judgment": "CORRECT"|"CLOSE"|"INCORRECT", "explanation": string }. Explanation must be 1-3 words, friendly, no answer reveal.`;
 
-Respond ONLY with the JSON object defined in the schema.`;
-
-    const userPrompt = `
-      Correct Answer: "${challenge.correct_answer}"
-      Tags: [${challenge.tags.join(", ")}]
-      Player's Guess: "${guess}"
-    `;
+    const userPrompt = isAttempt7
+      ? `Answer: "${challenge.correct_answer}"\nTags: ${challenge.tags.join(", ")}\nGuess: "${guess}"\nPast guesses: ${pastGuesses.join(", ")}`
+      : `Answer: "${challenge.correct_answer}"\nGuess: "${guess}"`;
 
     // Build request payload
     const payload = {
-      // Pass the dynamic data here
       contents: [{ parts: [{ text: userPrompt }] }],
-      // Pass the static instructions here
       systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: {
         responseMimeType: "application/json",
+        // Provide generous headroom so Gemini can finish structured outputs.
+        maxOutputTokens: isAttempt7 ? 768 : 512,
         responseSchema: {
           type: "OBJECT",
           properties: {
@@ -149,10 +192,34 @@ Respond ONLY with the JSON object defined in the schema.`;
 
     // Parse response
     const result = await response.json();
-    const jsonText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    const candidate = result?.candidates?.[0];
+
+    if (!candidate) {
+      this.logError("AIValidationService", "No candidates returned from API");
+      throw new Error("Invalid API response");
+    }
+
+    if (
+      candidate.finishReason &&
+      candidate.finishReason !== "STOP" &&
+      candidate.finishReason !== "FINISH_REASON_UNSPECIFIED"
+    ) {
+      this.logError(
+        "AIValidationService",
+        `Generation stopped early with reason ${candidate.finishReason}. Full response: ${JSON.stringify(
+          result
+        ).slice(0, 500)}...`
+      );
+      throw new Error(`Generation stopped early: ${candidate.finishReason}`);
+    }
+
+    const jsonText = this.extractJsonPayload(result);
 
     if (!jsonText) {
-      this.logError("AIValidationService", "No response text from API");
+      this.logError(
+        "AIValidationService",
+        `No response text from API. Raw response: ${JSON.stringify(result).slice(0, 500)}...`
+      );
       throw new Error("Invalid API response");
     }
 
@@ -191,7 +258,7 @@ Respond ONLY with the JSON object defined in the schema.`;
 
     this.logInfo(
       "AIValidationService",
-      `AI judgment: ${judgment} for guess "${guess}" vs answer "${challenge.correct_answer}"`
+      `AI judgment: ${judgment} for guess "${guess}" vs answer "${challenge.correct_answer}" (attempt ${attemptNumber})`
     );
 
     const safeExplanation = explanation || this.getDefaultExplanation(isCorrect);
@@ -204,11 +271,45 @@ Respond ONLY with the JSON object defined in the schema.`;
   }
 
   /**
+   * Extract JSON payload from Gemini response.
+   * Supports both plain text and functionCall outputs (used when responseSchema is set).
+   */
+  private extractJsonPayload(result: any): string | undefined {
+    const candidate = result?.candidates?.[0];
+    const parts = candidate?.content?.parts;
+
+    if (!Array.isArray(parts)) {
+      return undefined;
+    }
+
+    for (const part of parts) {
+      if (typeof part?.text === "string" && part.text.trim().length > 0) {
+        return part.text;
+      }
+
+      const functionCall = part?.functionCall;
+      if (functionCall?.args) {
+        if (typeof functionCall.args === "string") {
+          return functionCall.args;
+        }
+        try {
+          return JSON.stringify(functionCall.args);
+        } catch {
+          // Ignore and continue
+        }
+      }
+
+    }
+
+    return undefined;
+  }
+
+  /**
    * Get default explanation message based on correctness
    * Used when AI doesn't provide an explanation
    */
   private getDefaultExplanation(isCorrect: boolean): string {
-    return isCorrect ? "Correct answer!" : "Not quite right. Try again!";
+    return isCorrect ? "Correct!" : "Try again";
   }
 
   /**
@@ -217,33 +318,130 @@ Respond ONLY with the JSON object defined in the schema.`;
    */
   private fallbackValidation(
     guess: string,
-    challenge: Challenge
+    challenge: Challenge,
+    attemptNumber: number,
+    pastGuesses: string[]
   ): ValidationResult {
-    const normalizedGuess = guess.toLowerCase().trim();
-    const normalizedAnswer = challenge.correct_answer.toLowerCase().trim();
+    const normalizedGuess = this.normalizeText(guess);
+    const normalizedAnswer = this.normalizeText(challenge.correct_answer);
 
-    // 1. Check for Exact Match (most conservative CORRECT)
-    if (normalizedGuess === normalizedAnswer) {
+    if (!normalizedGuess || !normalizedAnswer) {
+      return {
+        isCorrect: false,
+        explanation: this.getShortResponse("incorrect", attemptNumber, challenge, pastGuesses),
+        judgment: "INCORRECT",
+      };
+    }
+
+    const similarity = this.computeSimilarity(normalizedGuess, normalizedAnswer);
+
+    if (similarity >= 0.9 || normalizedGuess === normalizedAnswer) {
       return {
         isCorrect: true,
-        explanation: "[Fallback Judge]: Correct answer!",
+        explanation: this.getShortResponse("correct", attemptNumber, challenge, pastGuesses),
         judgment: "CORRECT",
       };
     }
 
-    if (normalizedGuess.length > 5 && normalizedAnswer.includes(normalizedGuess)) {
+    if (similarity >= 0.6 || this.hasTokenOverlap(normalizedGuess, normalizedAnswer)) {
       return {
         isCorrect: false,
-        explanation: "[Fallback Judge]: Close, you've identified a key word. The full answer is more specific.",
+        explanation: this.getShortResponse("close", attemptNumber, challenge, pastGuesses),
         judgment: "CLOSE",
       };
     }
 
     return {
       isCorrect: false,
-      explanation: "[Fallback Judge]: Incorrect. Try revealing more hints.",
+      explanation: this.getShortResponse("incorrect", attemptNumber, challenge, pastGuesses),
       judgment: "INCORRECT",
     };
+  }
+
+  private normalizeText(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  private computeSimilarity(a: string, b: string): number {
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+
+    const tokensA = a.split(" ");
+    const tokensB = b.split(" ");
+
+    const overlap = tokensA.filter((token) => tokensB.includes(token)).length;
+    const maxLength = Math.max(tokensA.length, tokensB.length);
+
+    return overlap / maxLength;
+  }
+
+  private hasTokenOverlap(a: string, b: string): boolean {
+    const tokensA = new Set(a.split(" "));
+    const tokensB = new Set(b.split(" "));
+    let shared = 0;
+
+    tokensA.forEach((token) => {
+      if (tokensB.has(token)) {
+        shared += 1;
+      }
+    });
+
+    return shared > 0;
+  }
+
+  private getShortResponse(
+    type: "correct" | "close" | "incorrect",
+    attemptNumber: number,
+    challenge: Challenge,
+    pastGuesses: string[]
+  ): string {
+    const isHintAttempt = attemptNumber === 7;
+
+    if (type === "correct") {
+      return attemptNumber <= 6 ? "Correct!" : "Correct answer!";
+    }
+
+    if (type === "close") {
+      if (isHintAttempt) {
+        return this.buildHint(challenge, pastGuesses, "You're close!");
+      }
+      return "Close match";
+    }
+
+    // incorrect
+    if (isHintAttempt) {
+      return this.buildHint(challenge, pastGuesses, "Try again");
+    }
+
+    return attemptNumber <= 3 ? "Keep trying" : "Try again";
+  }
+
+  private buildHint(
+    challenge: Challenge,
+    pastGuesses: string[],
+    prefix: string
+  ): string {
+    const tags = challenge.tags || [];
+    if (tags.length > 0) {
+      return `${prefix}: Think about ${tags.slice(0, 2).join(", ")}.`;
+    }
+
+    const answerTokens = this.normalizeText(challenge.correct_answer).split(" ");
+    const firstToken = answerTokens[0] || "the theme";
+    const maskedToken =
+      firstToken.length <= 2
+        ? `${firstToken.charAt(0)}...`
+        : `${firstToken.charAt(0)}${"*".repeat(Math.max(firstToken.length - 2, 1))}${firstToken.charAt(firstToken.length - 1)}`;
+
+    if (pastGuesses.length > 0) {
+      return `${prefix}: Your last guess "${pastGuesses[pastGuesses.length - 1]}" was close. Focus on ${maskedToken}.`;
+    }
+
+    return `${prefix}: Focus on ${maskedToken}.`;
   }
 
   /**
@@ -281,7 +479,7 @@ Respond ONLY with the JSON object defined in the schema.`;
         created_at: new Date().toISOString(),
       };
 
-      const result = await this.validateAnswer("apple", testChallenge);
+      const result = await this.validateAnswer("apple", testChallenge, 1, []);
 
       if (result.isCorrect && result.judgment === "CORRECT") {
         return {

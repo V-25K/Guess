@@ -52,7 +52,14 @@ export const ErrorBoundary: Devvit.BlockComponent<ErrorBoundaryProps> = (
     }
 
     return (
-      <vstack padding="large" gap="large" alignment="center middle" grow>
+      <vstack padding="large" gap="large" alignment="center middle" grow backgroundColor="#F6F7F8">
+        <image
+          url="logo.png"
+          imageHeight={80}
+          imageWidth={192}
+          resizeMode="fit"
+        />
+        
         <vstack
           padding="medium"
           gap="medium"

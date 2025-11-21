@@ -56,7 +56,7 @@ export class AttemptRepository extends BaseRepository {
     try {
       const config = await this.getSupabaseConfig();
       const url = `${config.url}/rest/v1/${this.TABLE}?user_id=eq.${userId}&challenge_id=eq.${challengeId}&select=id&limit=1`;
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -84,7 +84,7 @@ export class AttemptRepository extends BaseRepository {
     try {
       const config = await this.getSupabaseConfig();
       const url = `${config.url}/rest/v1/${this.TABLE}?user_id=eq.${userId}&challenge_id=eq.${challengeId}&is_solved=eq.true&select=id&limit=1`;
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -112,7 +112,7 @@ export class AttemptRepository extends BaseRepository {
     try {
       const config = await this.getSupabaseConfig();
       const url = `${config.url}/rest/v1/${this.TABLE}?user_id=eq.${userId}&challenge_id=eq.${challengeId}&select=*&limit=1`;
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -170,4 +170,5 @@ export class AttemptRepository extends BaseRepository {
       order: 'created_at.asc',
     });
   }
+
 }

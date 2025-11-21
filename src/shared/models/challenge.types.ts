@@ -15,6 +15,7 @@ export type Challenge = {
   max_score: number;
   score_deduction_per_hint: number;
   reddit_post_id: string | null;
+  players_played: number;
   created_at: string;
 };
 

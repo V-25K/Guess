@@ -16,6 +16,7 @@ import { UserService } from '../../../server/services/user.service.js';
 import { AttemptRepository } from '../../../server/repositories/attempt.repository.js';
 import { ChallengeRepository } from '../../../server/repositories/challenge.repository.js';
 import { UserRepository } from '../../../server/repositories/user.repository.js';
+import { calculatePotentialScore } from '../../../shared/utils/reward-calculator.js';
 
 export interface GameplayViewWrapperProps {
   userId: string;
@@ -58,39 +59,100 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     isCorrect: false,
   });
 
-  // Check if challenge is already completed or game over
+  // Trigger state for answer submission (useAsync pattern)
+  const [submittedGuess, setSubmittedGuess] = useState<string | null>(null);
+
+  // Polyfill for useRef since it's not available in this version
+  const [isProcessingRef] = useState<{ current: boolean }>({ current: false });
+
+  // Check for existing attempt status
   const { data: attemptData, loading: checkingCompletion } = useAsync(async () => {
-    if (!currentChallenge) return null;
-    
+    if (!currentChallenge || !userId) return null;
+
     const attemptRepo = new AttemptRepository(context);
     const userRepo = new UserRepository(context);
     const userService = new UserService(context, userRepo);
     const attemptService = new AttemptService(context, attemptRepo, userService);
-    
-    // Use getAttemptStatus instead of getCompletionStatus to check for both completed and game over
-    return await attemptService.getAttemptStatus(userId, currentChallenge.id);
-  }, { 
+
+    // Get attempt regardless of completion status
+    return await attemptService.getAttempt(userId, currentChallenge.id);
+  }, {
     depends: [currentChallenge?.id || '', userId],
     finally: (data) => {
-      // If game is over (either completed or failed), update game state
-      if (data && (data.is_solved || data.game_over)) {
+      // Guard: Don't update state if we are currently processing a guess
+      if (isProcessingRef.current) return;
+
+      if (data) {
+        // Calculate potential score for NEXT attempt
+        const potentialScore = calculatePotentialScore(data.attempts_made);
+
         setGameState({
           attemptCount: data.attempts_made,
-          attemptsRemaining: data.game_over && !data.is_solved ? 0 : 10 - data.attempts_made,
-          potentialScore: 0,
-          message: data.is_solved 
+          attemptsRemaining: data.game_over ? 0 : Math.max(0, 10 - data.attempts_made),
+          potentialScore: potentialScore,
+          message: data.is_solved
             ? `You earned +${data.points_earned} points!`
-            : 'You\'ve used all 10 attempts',
-          isGameOver: true,
+            : data.game_over
+              ? 'You\'ve used all 10 attempts'
+              : 'What connects these images?',
+          isGameOver: data.game_over || data.is_solved,
           isCorrect: data.is_solved,
         });
       }
     }
   });
-  
+
   const isCompleted = attemptData?.is_solved || false;
   const isGameOver = attemptData?.game_over || false;
   const completedScore = attemptData?.points_earned || 0;
+
+
+
+  // useAsync pattern: Process answer when submittedGuess changes
+  const { data: answerResult, loading: isProcessing, error: processingError } = useAsync(
+    async () => {
+      if (!submittedGuess || !currentChallenge) return null;
+
+      // Create services for this async context
+      const attemptRepo = new AttemptRepository(context);
+      const challengeRepo = new ChallengeRepository(context);
+      const userRepo = new UserRepository(context);
+      const userService = new UserService(context, userRepo);
+      const attemptService = new AttemptService(context, attemptRepo, userService, challengeRepo);
+
+      // Submit guess using new signature (passes guess text, AI validation happens in service)
+      const result = await attemptService.submitGuess(
+        userId,
+        currentChallenge.id,
+        submittedGuess
+      );
+
+      return result;
+    },
+    {
+      depends: [submittedGuess],
+      finally: (result) => {
+        if (result) {
+          // Update game state with attempt tracking data
+          setGameState({
+            attemptCount: 10 - result.attemptsRemaining,
+            attemptsRemaining: result.attemptsRemaining,
+            potentialScore: result.potentialScore,
+            message: result.isCorrect
+              ? `You earned +${result.reward?.points || 0} points!`
+              : result.explanation,
+            isGameOver: result.gameOver,
+            isCorrect: result.isCorrect,
+          });
+        }
+      }
+    }
+  );
+
+  // Keep ref in sync with loading state
+  isProcessingRef.current = isProcessing;
+
+  // Form for answer submission
   const answerForm = useForm(
     {
       fields: [
@@ -102,54 +164,19 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
         },
       ],
       title: 'Your Answer',
+      description: 'What connects these images?',
       acceptLabel: 'Submit',
       cancelLabel: 'Cancel',
     },
     async (values) => {
-      if (!currentChallenge) return;
+      // Trigger the useAsync by setting submittedGuess
+      setSubmittedGuess(values.answer);
 
-      const guess = values.answer;
-
-      try {
-        // Create services for this async context
-        const attemptRepo = new AttemptRepository(context);
-        const challengeRepo = new ChallengeRepository(context);
-        const userRepo = new UserRepository(context);
-        const userService = new UserService(context, userRepo);
-        const attemptService = new AttemptService(context, attemptRepo, userService, challengeRepo);
-
-        // Submit guess using new signature (passes guess text, AI validation happens in service)
-        const result = await attemptService.submitGuess(
-          userId,
-          currentChallenge.id,
-          guess
-        );
-
-        // Update game state with attempt tracking data
-        setGameState({
-          attemptCount: 10 - result.attemptsRemaining,
-          attemptsRemaining: result.attemptsRemaining,
-          potentialScore: result.potentialScore,
-          message: result.isCorrect 
-            ? `You earned +${result.reward?.points || 0} points!`
-            : result.explanation,
-          isGameOver: result.gameOver,
-          isCorrect: result.isCorrect,
-        });
-
-        if (result.isCorrect) {
-          context.ui.showToast('🎉 Correct answer!');
-        } else if (result.gameOver) {
-          context.ui.showToast('❌ Game over - no attempts remaining');
-        }
-      } catch (error) {
-        console.error('Error during answer submission:', error);
-        context.ui.showToast('⚠️ Error checking answer. Please try again.');
-        setGameState((prev) => ({
-          ...prev,
-          message: '⚠️ Error checking answer. Please try again.',
-        }));
-      }
+      // Update UI immediately to show "Thinking..."
+      setGameState(prev => ({
+        ...prev,
+        message: '🤖 Thinking...',
+      }));
     }
   );
 
@@ -159,9 +186,11 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
       context.ui.showToast("❌ You can't answer your own challenge!");
       return;
     }
+
+    // Show the form
     context.ui.showForm(answerForm);
   };
-  
+
   // Check if current user is the creator
   const isCreator = currentChallenge ? userId === currentChallenge.creator_id : false;
 
@@ -179,8 +208,8 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
           📭 No Challenges Available
         </text>
         <text size="small" color="#878a8c" alignment="center">
-          {challenges?.length === 0 
-            ? 'No challenges have been created yet. Be the first to create one!' 
+          {challenges?.length === 0
+            ? 'No challenges have been created yet. Be the first to create one!'
             : 'Unable to load challenge. Please try again.'}
         </text>
         <button onPress={onBackToMenu} appearance="primary">
@@ -205,6 +234,9 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
       isGameOver={isGameOver}
       completedScore={completedScore}
       checkingCompletion={checkingCompletion}
+
+      isProcessing={isProcessing}
+      uniquePlayerCount={currentChallenge.players_played || 0}
     />
   );
 };

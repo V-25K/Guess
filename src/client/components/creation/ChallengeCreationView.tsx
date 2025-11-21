@@ -119,8 +119,6 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
             cancelLabel: 'Cancel',
         },
         async (values) => {
-            console.log('[ChallengeCreationView] Form submitted with values:', JSON.stringify(values));
-            
             try {
                 if (!values) {
                     console.error('[ChallengeCreationView] No values received from form');
@@ -140,8 +138,6 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 if (values.image3) imageUrlArray.push(values.image3);
                 if (values.image4) imageUrlArray.push(values.image4);
                 if (values.image5) imageUrlArray.push(values.image5);
-                
-                console.log('[ChallengeCreationView] Collected images:', imageUrlArray.length);
                 
                 if (imageUrlArray.length < 2) {
                     context.ui.showToast('❌ Please upload at least 2 images');
