@@ -71,6 +71,8 @@ export class AIValidationService extends BaseService {
     }
 
     try {
+      this.logInfo("AIValidationService", `Attempting AI validation for guess: "${guess}"`);
+
       // Try AI validation with retry logic
       const aiResult = await this.withRetry(
         () => this.validateWithAI(guess, challenge, attemptNumber, pastGuesses),
@@ -80,6 +82,8 @@ export class AIValidationService extends BaseService {
           exponentialBackoff: true,
         }
       );
+
+      this.logInfo("AIValidationService", `AI Validation Successful: ${JSON.stringify(aiResult)}`);
 
       // Ensure explanation is never null or undefined
       const result: ValidationResult = {
@@ -107,11 +111,13 @@ export class AIValidationService extends BaseService {
     } catch (error) {
       this.logError(
         "AIValidationService.validateAnswer",
-        "AI validation failed, using fallback"
+        `AI validation failed: ${error instanceof Error ? error.message : String(error)}. Switching to FALLBACK.`
       );
 
       // Fall back to simple validation
-      return this.fallbackValidation(guess, challenge, attemptNumber, pastGuesses);
+      const fallbackResult = this.fallbackValidation(guess, challenge, attemptNumber, pastGuesses);
+      this.logInfo("AIValidationService", `Fallback Validation Result: ${JSON.stringify(fallbackResult)}`);
+      return fallbackResult;
     }
   }
 
@@ -152,8 +158,8 @@ export class AIValidationService extends BaseService {
       systemInstruction: { parts: [{ text: systemPrompt }] },
       generationConfig: {
         responseMimeType: "application/json",
-        // Provide generous headroom so Gemini can finish structured outputs.
-        maxOutputTokens: isAttempt7 ? 768 : 512,
+        // Provide generous headroom so Gemini can finish structured outputs, especially with thinking models
+        maxOutputTokens: 2048,
         responseSchema: {
           type: "OBJECT",
           properties: {
@@ -361,27 +367,85 @@ export class AIValidationService extends BaseService {
     if (!a || !b) return 0;
     if (a === b) return 1;
 
-    const tokensA = a.split(" ");
-    const tokensB = b.split(" ");
+    // 1. Token Similarity (Jaccard Index) ignoring stop words
+    const stopWords = new Set(["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with"]);
 
-    const overlap = tokensA.filter((token) => tokensB.includes(token)).length;
-    const maxLength = Math.max(tokensA.length, tokensB.length);
+    const tokensA = a.split(" ").filter(t => !stopWords.has(t));
+    const tokensB = b.split(" ").filter(t => !stopWords.has(t));
 
-    return overlap / maxLength;
+    // If all words were stop words (e.g. "The The"), fall back to original tokens
+    const finalA = tokensA.length > 0 ? tokensA : a.split(" ");
+    const finalB = tokensB.length > 0 ? tokensB : b.split(" ");
+
+    const setA = new Set(finalA);
+    const setB = new Set(finalB);
+
+    let intersection = 0;
+    setA.forEach(token => {
+      if (setB.has(token)) intersection++;
+    });
+
+    const union = new Set([...finalA, ...finalB]).size;
+    const jaccardScore = union === 0 ? 0 : intersection / union;
+
+    // 2. Levenshtein Similarity (for typos)
+    // Only calculate if strings are reasonably close in length
+    let levenshteinScore = 0;
+    if (Math.abs(a.length - b.length) < 5) {
+      const distance = this.levenshteinDistance(a, b);
+      const maxLength = Math.max(a.length, b.length);
+      levenshteinScore = 1 - (distance / maxLength);
+    }
+
+    // Return the better of the two scores
+    return Math.max(jaccardScore, levenshteinScore);
   }
 
   private hasTokenOverlap(a: string, b: string): boolean {
-    const tokensA = new Set(a.split(" "));
-    const tokensB = new Set(b.split(" "));
-    let shared = 0;
+    const stopWords = new Set(["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with"]);
 
-    tokensA.forEach((token) => {
-      if (tokensB.has(token)) {
-        shared += 1;
+    const tokensA = a.split(" ").filter(t => !stopWords.has(t));
+    const tokensB = b.split(" ").filter(t => !stopWords.has(t));
+
+    // If all words were stop words, use original
+    const finalA = tokensA.length > 0 ? tokensA : a.split(" ");
+    const finalB = tokensB.length > 0 ? tokensB : b.split(" ");
+
+    return finalA.some(token => finalB.includes(token));
+  }
+
+  /**
+   * Calculate Levenshtein distance between two strings
+   * (Number of edits required to transform a to b)
+   */
+  private levenshteinDistance(a: string, b: string): number {
+    const matrix = [];
+
+    for (let i = 0; i <= b.length; i++) {
+      matrix[i] = [i];
+    }
+
+    for (let j = 0; j <= a.length; j++) {
+      matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1, // substitution
+            Math.min(
+              matrix[i][j - 1] + 1, // insertion
+              matrix[i - 1][j] + 1 // deletion
+            )
+          );
+        }
       }
-    });
+    }
 
-    return shared > 0;
+    return matrix[b.length][a.length];
   }
 
   private getShortResponse(
@@ -393,22 +457,38 @@ export class AIValidationService extends BaseService {
     const isHintAttempt = attemptNumber === 7;
 
     if (type === "correct") {
-      return attemptNumber <= 6 ? "Correct!" : "Correct answer!";
+      const responses = ["Correct!", "You got it!", "Spot on!", "That's the answer!"];
+      return responses[Math.floor(Math.random() * responses.length)];
     }
 
     if (type === "close") {
       if (isHintAttempt) {
-        return this.buildHint(challenge, pastGuesses, "You're close!");
+        return this.buildHint(challenge, pastGuesses, "You're very close!");
       }
-      return "Close match";
+      const responses = [
+        "You're on the right track!",
+        "Very close!",
+        "Almost there!",
+        "Getting warmer...",
+        "So close, be more specific."
+      ];
+      return responses[Math.floor(Math.random() * responses.length)];
     }
 
     // incorrect
     if (isHintAttempt) {
-      return this.buildHint(challenge, pastGuesses, "Try again");
+      return this.buildHint(challenge, pastGuesses, "Here's a hint");
     }
 
-    return attemptNumber <= 3 ? "Keep trying" : "Try again";
+    const responses = [
+      "Not quite.",
+      "Keep thinking!",
+      "Give it another shot.",
+      "Nope, try again.",
+      "Cold.",
+      "Not what we're looking for."
+    ];
+    return responses[Math.floor(Math.random() * responses.length)];
   }
 
   private buildHint(
@@ -416,23 +496,29 @@ export class AIValidationService extends BaseService {
     pastGuesses: string[],
     prefix: string
   ): string {
+    // 1. Try to use tags first
     const tags = challenge.tags || [];
     if (tags.length > 0) {
       return `${prefix}: Think about ${tags.slice(0, 2).join(", ")}.`;
     }
 
-    const answerTokens = this.normalizeText(challenge.correct_answer).split(" ");
-    const firstToken = answerTokens[0] || "the theme";
-    const maskedToken =
-      firstToken.length <= 2
-        ? `${firstToken.charAt(0)}...`
-        : `${firstToken.charAt(0)}${"*".repeat(Math.max(firstToken.length - 2, 1))}${firstToken.charAt(firstToken.length - 1)}`;
+    // 2. Fallback to a "Hangman-style" mask of the answer
+    const answer = this.normalizeText(challenge.correct_answer);
+    const words = answer.split(" ");
+
+    const maskedWords = words.map(word => {
+      if (word.length <= 2) return word; // Don't mask short words
+      // Show first letter, mask rest with underscores
+      return word.charAt(0).toUpperCase() + "_".repeat(word.length - 1);
+    });
+
+    const hint = maskedWords.join(" ");
 
     if (pastGuesses.length > 0) {
-      return `${prefix}: Your last guess "${pastGuesses[pastGuesses.length - 1]}" was close. Focus on ${maskedToken}.`;
+      return `${prefix}. Hint: ${hint}`;
     }
 
-    return `${prefix}: Focus on ${maskedToken}.`;
+    return `${prefix}. Hint: ${hint}`;
   }
 
   /**

@@ -11,3 +11,6 @@ export type { ImageGridProps } from './ImageGrid.js';
 
 export { GameplayViewWrapper } from './GameplayViewWrapper.js';
 export type { GameplayViewWrapperProps } from './GameplayViewWrapper.js';
+
+export { AnswerExplanationView } from './AnswerExplanationView.js';
+export type { AnswerExplanationViewProps } from './AnswerExplanationView.js';

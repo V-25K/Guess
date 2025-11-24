@@ -10,8 +10,12 @@ export type Challenge = {
   title: string;
   description: string | null;
   image_url: string;
+  // Array of short (<100 chars) descriptions for each image, in order
+  image_descriptions?: string[];
   tags: string[];
   correct_answer: string;
+  // Creator's explanation of how the images relate to the answer
+  answer_explanation?: string;
   max_score: number;
   score_deduction_per_hint: number;
   reddit_post_id: string | null;
@@ -25,6 +29,7 @@ export type ChallengeCreate = Omit<Challenge, 'id' | 'created_at' | 'reddit_post
 export type ImageItem = {
   url: string;
   isRevealed: boolean;
+  description?: string;
 };
 
 export type GameChallenge = Challenge & {

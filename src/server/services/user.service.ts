@@ -161,6 +161,11 @@ export class UserService extends BaseService {
         return { canCreate: true, timeRemaining: 0 };
       }
 
+      // Allow mods to bypass rate limits
+      if (profile.role === 'mod') {
+        return { canCreate: true, timeRemaining: 0 };
+      }
+
       const lastCreatedAt = new Date(profile.last_challenge_created_at);
       const now = new Date();
       const timeSinceLastCreation = now.getTime() - lastCreatedAt.getTime();

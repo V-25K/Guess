@@ -150,7 +150,7 @@ export abstract class BaseService {
    * @param context - Service or operation context
    * @param message - Info message
    */
-  protected logInfo(context: string, message: string): void {
+  protected logInfo(_context: string, _message: string): void {
     // Info logging removed for production
   }
 

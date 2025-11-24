@@ -6,7 +6,7 @@
 import type { Context } from '@devvit/public-api';
 import { BaseService } from './base.service.js';
 import { UserRepository } from '../repositories/user.repository.js';
-import type { UserProfile } from '../../shared/models/user.types.js';
+
 import { RedisCache } from '../utils/redis-cache.js';
 import { createPaginatedResult, DEFAULT_PAGE_SIZE, type PaginatedResult } from '../../shared/utils/pagination.js';
 

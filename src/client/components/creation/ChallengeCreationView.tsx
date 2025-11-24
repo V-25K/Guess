@@ -80,11 +80,25 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     helpText: 'Upload first image',
                 },
                 {
+                    name: 'desc1',
+                    label: 'Image 1 Description *',
+                    type: 'string',
+                    required: true,
+                    helpText: 'What does this image show? (max 100 chars)',
+                },
+                {
                     name: 'image2',
                     label: 'Image 2 *',
                     type: 'image',
                     required: true,
                     helpText: 'Upload second image',
+                },
+                {
+                    name: 'desc2',
+                    label: 'Image 2 Description *',
+                    type: 'string',
+                    required: true,
+                    helpText: 'What does this image show? (max 100 chars)',
                 },
                 {
                     name: 'image3',
@@ -94,25 +108,19 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     helpText: 'Upload third image (optional)',
                 },
                 {
-                    name: 'image4',
-                    label: 'Image 4',
-                    type: 'image',
+                    name: 'desc3',
+                    label: 'Image 3 Description',
+                    type: 'string',
                     required: false,
-                    helpText: 'Upload fourth image (optional)',
+                    helpText: 'What does this image show? (max 50 chars)',
                 },
+
                 {
-                    name: 'image5',
-                    label: 'Image 5',
-                    type: 'image',
-                    required: false,
-                    helpText: 'Upload fifth image (optional)',
-                },
-                {
-                    name: 'description',
-                    label: 'Description',
+                    name: 'answerExplanation',
+                    label: 'Answer Explanation *',
                     type: 'paragraph',
-                    required: false,
-                    helpText: 'Additional context or hints (optional)',
+                    required: true,
+                    helpText: 'Explain how the images relate to the answer (1-2 sentences)',
                 },
             ],
             acceptLabel: 'Create Challenge',
@@ -125,55 +133,82 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     context.ui.showToast('❌ Form data missing');
                     return;
                 }
-                
+
                 const rateLimitCheck = await userService.canCreateChallenge(userId);
                 if (!rateLimitCheck.canCreate) {
                     context.ui.showToast('⏳ Please wait before creating another challenge');
                     return;
                 }
-                
+
                 const imageUrlArray: string[] = [];
                 if (values.image1) imageUrlArray.push(values.image1);
                 if (values.image2) imageUrlArray.push(values.image2);
                 if (values.image3) imageUrlArray.push(values.image3);
-                if (values.image4) imageUrlArray.push(values.image4);
-                if (values.image5) imageUrlArray.push(values.image5);
-                
-                if (imageUrlArray.length < 2) {
-                    context.ui.showToast('❌ Please upload at least 2 images');
+
+                if (imageUrlArray.length < 2 || imageUrlArray.length > 3) {
+                    context.ui.showToast('❌ Please upload 2-3 images');
                     return;
                 }
-                
-                const tagArray: string[] = values.tag 
+
+                // Collect image descriptions (max 100 chars each) - mandatory for uploaded images
+                const imageDescriptions: string[] = [];
+                if (values.image1) {
+                    if (!values.desc1?.trim()) {
+                        context.ui.showToast('❌ Please describe Image 1');
+                        return;
+                    }
+                    imageDescriptions.push(values.desc1.trim().substring(0, 100));
+                }
+                if (values.image2) {
+                    if (!values.desc2?.trim()) {
+                        context.ui.showToast('❌ Please describe Image 2');
+                        return;
+                    }
+                    imageDescriptions.push(values.desc2.trim().substring(0, 100));
+                }
+                if (values.image3) {
+                    if (!values.desc3?.trim()) {
+                        context.ui.showToast('❌ Please describe Image 3');
+                        return;
+                    }
+                    imageDescriptions.push(values.desc3.trim().substring(0, 100));
+                }
+
+
+                const tagArray: string[] = values.tag
                     ? (Array.isArray(values.tag) ? values.tag : [values.tag])
                     : [];
-                
+
                 // Fixed scoring values for attempt-based system
                 const maxScore = 30;
                 const scoreDeductionPerHint = 2;
-                
+
                 const challenge = await challengeService.createChallenge({
                     creator_id: userId,
                     creator_username: username,
                     title: values.title.trim(),
-                    description: values.description?.trim() || null,
+                    description: null,
                     image_url: imageUrlArray.join(','),
+                    image_descriptions: imageDescriptions,
+                    answer_explanation: values.answerExplanation?.trim() || undefined,
                     correct_answer: values.answer.trim(),
                     tags: tagArray,
                     max_score: maxScore,
                     score_deduction_per_hint: scoreDeductionPerHint,
+                    players_played: 0,
+                    players_completed: 0,
                 });
-                
+
                 if (challenge) {
                     // Create Reddit post for the challenge (in proper async context)
                     const postId = await challengeService.createRedditPostForChallenge(challenge.id);
-                    
+
                     if (postId) {
                         context.ui.showToast('✅ Challenge created with post! +5 pts, +5 exp');
                     } else {
                         context.ui.showToast('✅ Challenge created! +5 pts, +5 exp (post creation pending)');
                     }
-                    
+
                     onSuccess(challenge);
                 } else {
                     context.ui.showToast('❌ Failed to create challenge');
@@ -184,12 +219,12 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
             }
         }
     );
-    
+
     return (
-        <vstack 
-            alignment="center middle" 
-            padding="medium" 
-            gap="medium" 
+        <vstack
+            alignment="center middle"
+            padding="medium"
+            gap="medium"
             width="100%"
             height="100%"
             backgroundColor="#F6F7F8"
@@ -202,9 +237,9 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     Create a new image puzzle for others to solve
                 </text>
             </vstack>
-            
+
             <vstack gap="medium" width="80%" alignment="center middle">
-                <button 
+                <button
                     onPress={() => {
                         if (!isModerator && userLevel < REQUIRED_LEVEL) {
                             context.ui.showToast(
@@ -222,8 +257,8 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 >
                     {isModerator ? 'Open Create Form (Moderator)' : 'Open Create Form'}
                 </button>
-                
-                <button 
+
+                <button
                     onPress={onCancel}
                     appearance="secondary"
                     size="medium"
@@ -232,10 +267,10 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     Back to Menu
                 </button>
             </vstack>
-            
-            <vstack 
-                padding="medium" 
-                gap="small" 
+
+            <vstack
+                padding="medium"
+                gap="small"
                 width="80%"
                 backgroundColor="#FFFFFF"
                 cornerRadius="medium"
@@ -244,16 +279,16 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     💡 Tips:
                 </text>
                 <text style="body" size="xsmall" color="#666666">
-                    • Upload 2-5 images from your device
+                    • Upload 2-3 images that share a common link
                 </text>
                 <text style="body" size="xsmall" color="#666666">
-                    • Images should share a common theme
+                    • Describe each image clearly
                 </text>
                 <text style="body" size="xsmall" color="#666666">
-                    • Choose a clear, specific answer
+                    • Explain how images relate to the answer
                 </text>
                 <text style="body" size="xsmall" color="#666666">
-                    • Select the most relevant category
+                    • Choose a specific, not too broad answer
                 </text>
             </vstack>
         </vstack>

@@ -5,6 +5,7 @@
 
 import { Devvit, useState } from '@devvit/public-api';
 import type { GameChallenge } from '../../../shared/models/index.js';
+import { AnswerExplanationView } from './AnswerExplanationView.js';
 
 export interface PlayGameViewProps {
     challenge: GameChallenge;
@@ -74,36 +75,8 @@ const ImageGrid: Devvit.BlockComponent<{
     const imageCount = images.length;
     const imageSize = 90; // Consistent size for all images
 
-    if (imageCount === 5) {
-        // 3 images in first row, 2 in second row
-        return (
-            <vstack gap="small" width="100%" alignment="center middle">
-                <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[0]} index={0} sizePx={imageSize} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[1]} index={1} sizePx={imageSize} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[2]} index={2} sizePx={imageSize} onEnlarge={onEnlarge} />
-                </hstack>
-                <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[3]} index={3} sizePx={imageSize} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[4]} index={4} sizePx={imageSize} onEnlarge={onEnlarge} />
-                </hstack>
-            </vstack>
-        );
-    } else if (imageCount === 4) {
-        // 3 images in first row, 1 in second row
-        return (
-            <vstack gap="small" width="100%" alignment="center middle">
-                <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[0]} index={0} sizePx={imageSize} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[1]} index={1} sizePx={imageSize} onEnlarge={onEnlarge} />
-                    <ImageCell image={images[2]} index={2} sizePx={imageSize} onEnlarge={onEnlarge} />
-                </hstack>
-                <hstack gap="small" alignment="center middle">
-                    <ImageCell image={images[3]} index={3} sizePx={imageSize} onEnlarge={onEnlarge} />
-                </hstack>
-            </vstack>
-        );
-    } else if (imageCount === 3) {
+
+    if (imageCount === 3) {
         // All 3 images in one row
         return (
             <hstack gap="small" width="100%" alignment="center middle">
@@ -152,6 +125,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
     playersCompleted,
 }) => {
     const [enlargedImageIndex, setEnlargedImageIndex] = useState<number | null>(null);
+    const [showExplanation, setShowExplanation] = useState(false);
 
     const handleEnlargeImage = (index: number) => {
         setEnlargedImageIndex(index);
@@ -160,6 +134,24 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
     const handleCloseEnlarged = () => {
         setEnlargedImageIndex(null);
     };
+
+    const handleShowExplanation = () => {
+        setShowExplanation(true);
+    };
+
+    const handleCloseExplanation = () => {
+        setShowExplanation(false);
+    };
+
+    // If showing explanation, render that view
+    if (showExplanation) {
+        return (
+            <AnswerExplanationView
+                challenge={challenge}
+                onBack={handleCloseExplanation}
+            />
+        );
+    }
 
     // If an image is enlarged, show the overlay
     if (enlargedImageIndex !== null) {
@@ -449,6 +441,14 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
             {/* Game Over Actions */}
             {(gameState.isGameOver || isGameOver) && (
                 <vstack gap="small" width="100%">
+                    <button
+                        onPress={handleShowExplanation}
+                        appearance="secondary"
+                        size="medium"
+                        width="100%"
+                    >
+                        💡 View Explanation
+                    </button>
                     <button
                         onPress={onNextChallenge}
                         appearance="primary"

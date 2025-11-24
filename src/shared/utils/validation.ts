@@ -17,7 +17,7 @@ export interface ValidationResult {
  */
 export const VALIDATION_RULES = {
   IMAGE_COUNT_MIN: 2,
-  IMAGE_COUNT_MAX: 5,
+  IMAGE_COUNT_MAX: 3,
   TITLE_MIN_LENGTH: 3,
   TITLE_MAX_LENGTH: 100,
   ANSWER_MIN_LENGTH: 2,
@@ -49,7 +49,7 @@ export type ValidTag = typeof VALID_TAGS[number];
 
 /**
  * Validate image count for a challenge.
- * Must be between 2 and 5 images (inclusive).
+ * Must be between 2 and 3 images (inclusive).
  * 
  * @param imageCount - Number of images
  * @returns Validation result
@@ -66,14 +66,14 @@ export function validateImageCount(imageCount: number): ValidationResult {
       error: `At least ${VALIDATION_RULES.IMAGE_COUNT_MIN} images are required`,
     };
   }
-  
+
   if (imageCount > VALIDATION_RULES.IMAGE_COUNT_MAX) {
     return {
       isValid: false,
       error: `Maximum ${VALIDATION_RULES.IMAGE_COUNT_MAX} images allowed`,
     };
   }
-  
+
   return { isValid: true };
 }
 
@@ -90,21 +90,21 @@ export function validateImageCount(imageCount: number): ValidationResult {
  */
 export function validateTitle(title: string): ValidationResult {
   const trimmedTitle = title.trim();
-  
+
   if (trimmedTitle.length < VALIDATION_RULES.TITLE_MIN_LENGTH) {
     return {
       isValid: false,
       error: `Title must be at least ${VALIDATION_RULES.TITLE_MIN_LENGTH} characters`,
     };
   }
-  
+
   if (trimmedTitle.length > VALIDATION_RULES.TITLE_MAX_LENGTH) {
     return {
       isValid: false,
       error: `Title must not exceed ${VALIDATION_RULES.TITLE_MAX_LENGTH} characters`,
     };
   }
-  
+
   return { isValid: true };
 }
 
@@ -121,21 +121,21 @@ export function validateTitle(title: string): ValidationResult {
  */
 export function validateAnswer(answer: string): ValidationResult {
   const trimmedAnswer = answer.trim();
-  
+
   if (trimmedAnswer.length < VALIDATION_RULES.ANSWER_MIN_LENGTH) {
     return {
       isValid: false,
       error: `Answer must be at least ${VALIDATION_RULES.ANSWER_MIN_LENGTH} characters`,
     };
   }
-  
+
   if (trimmedAnswer.length > VALIDATION_RULES.ANSWER_MAX_LENGTH) {
     return {
       isValid: false,
       error: `Answer must not exceed ${VALIDATION_RULES.ANSWER_MAX_LENGTH} characters`,
     };
   }
-  
+
   return { isValid: true };
 }
 
@@ -155,14 +155,14 @@ export function validateDescription(description?: string): ValidationResult {
   if (!description || description.trim().length === 0) {
     return { isValid: true };
   }
-  
+
   if (description.trim().length > VALIDATION_RULES.DESCRIPTION_MAX_LENGTH) {
     return {
       isValid: false,
       error: `Description must not exceed ${VALIDATION_RULES.DESCRIPTION_MAX_LENGTH} characters`,
     };
   }
-  
+
   return { isValid: true };
 }
 
@@ -186,23 +186,23 @@ export function validateTags(tags: string[]): ValidationResult {
       error: `At least ${VALIDATION_RULES.TAG_MIN_COUNT} tag is required`,
     };
   }
-  
+
   if (tags.length > VALIDATION_RULES.TAG_MAX_COUNT) {
     return {
       isValid: false,
       error: `Maximum ${VALIDATION_RULES.TAG_MAX_COUNT} tags allowed`,
     };
   }
-  
+
   const invalidTags = tags.filter(tag => !VALID_TAGS.includes(tag as ValidTag));
-  
+
   if (invalidTags.length > 0) {
     return {
       isValid: false,
       error: `Invalid tags: ${invalidTags.join(', ')}. Valid tags are: ${VALID_TAGS.join(', ')}`,
     };
   }
-  
+
   const uniqueTags = new Set(tags);
   if (uniqueTags.size !== tags.length) {
     return {
@@ -210,7 +210,7 @@ export function validateTags(tags: string[]): ValidationResult {
       error: 'Duplicate tags are not allowed',
     };
   }
-  
+
   return { isValid: true };
 }
 
@@ -240,27 +240,27 @@ export function validateChallengeCreation(data: {
   if (!titleResult.isValid) {
     return titleResult;
   }
-  
+
   const answerResult = validateAnswer(data.answer);
   if (!answerResult.isValid) {
     return answerResult;
   }
-  
+
   const descriptionResult = validateDescription(data.description);
   if (!descriptionResult.isValid) {
     return descriptionResult;
   }
-  
+
   const imageCountResult = validateImageCount(data.imageCount);
   if (!imageCountResult.isValid) {
     return imageCountResult;
   }
-  
+
   const tagsResult = validateTags(data.tags);
   if (!tagsResult.isValid) {
     return tagsResult;
   }
-  
+
   return { isValid: true };
 }
 
@@ -299,32 +299,32 @@ export function validateAllFields(data: {
   tags: string[];
 }): Record<string, string> {
   const errors: Record<string, string> = {};
-  
+
   const titleResult = validateTitle(data.title);
   if (!titleResult.isValid && titleResult.error) {
     errors.title = titleResult.error;
   }
-  
+
   const answerResult = validateAnswer(data.answer);
   if (!answerResult.isValid && answerResult.error) {
     errors.answer = answerResult.error;
   }
-  
+
   const descriptionResult = validateDescription(data.description);
   if (!descriptionResult.isValid && descriptionResult.error) {
     errors.description = descriptionResult.error;
   }
-  
+
   const imageCountResult = validateImageCount(data.imageCount);
   if (!imageCountResult.isValid && imageCountResult.error) {
     errors.images = imageCountResult.error;
   }
-  
+
   const tagsResult = validateTags(data.tags);
   if (!tagsResult.isValid && tagsResult.error) {
     errors.tags = tagsResult.error;
   }
-  
+
   return errors;
 }
 

@@ -60,16 +60,16 @@ export function useChallenges(
   options?: UseChallengesOptions
 ): UseChallengesResult {
   const pageSize = options?.pageSize || 50;
-  
+
   // State for challenges data
   const [challenges, setChallenges] = useState<Challenge[]>([]);
-  
+
   // State for loading indicator
   const [loading, setLoading] = useState<boolean>(true);
-  
+
   // State for error messages
   const [error, setError] = useState<string | null>(null);
-  
+
   // State for pagination
   const [offset, setOffset] = useState<number>(0);
   const [hasMore, setHasMore] = useState<boolean>(true);
@@ -79,28 +79,28 @@ export function useChallenges(
     try {
       setLoading(true);
       setError(null);
-      
+
       // Initialize services
       const challengeRepo = new ChallengeRepository(context);
       const userRepo = new UserRepository(context);
       const userService = new UserService(context, userRepo);
       const challengeService = new ChallengeService(context, challengeRepo, userService);
-      
+
       // Build filters with pagination
       const filters: ChallengeFilters = {
         ...options?.filters,
         limit: pageSize,
         offset: 0,
       };
-      
+
       // Fetch challenges
       const fetchedChallenges = await challengeService.getChallenges(filters);
-      
+
       setChallenges(fetchedChallenges);
-      
+
       // Check if there are more challenges to load
       setHasMore(fetchedChallenges.length === pageSize);
-      
+
       return true;
     } catch (err) {
       console.error('useChallenges: Error fetching challenges', err);
@@ -117,20 +117,20 @@ export function useChallenges(
       setLoading(true);
       setError(null);
       setOffset(0);
-      
+
       const challengeRepo = new ChallengeRepository(context);
       const userRepo = new UserRepository(context);
       const userService = new UserService(context, userRepo);
       const challengeService = new ChallengeService(context, challengeRepo, userService);
-      
+
       const filters: ChallengeFilters = {
         ...options?.filters,
         limit: pageSize,
         offset: 0,
       };
-      
+
       const fetchedChallenges = await challengeService.getChallenges(filters);
-      
+
       setChallenges(fetchedChallenges);
       setHasMore(fetchedChallenges.length === pageSize);
     } catch (err) {
@@ -146,25 +146,25 @@ export function useChallenges(
     if (loading || !hasMore) {
       return;
     }
-    
+
     try {
       setLoading(true);
-      
+
       const newOffset = offset + pageSize;
-      
+
       const challengeRepo = new ChallengeRepository(context);
       const userRepo = new UserRepository(context);
       const userService = new UserService(context, userRepo);
       const challengeService = new ChallengeService(context, challengeRepo, userService);
-      
+
       const filters: ChallengeFilters = {
         ...options?.filters,
         limit: pageSize,
         offset: newOffset,
       };
-      
+
       const fetchedChallenges = await challengeService.getChallenges(filters);
-      
+
       setChallenges(prev => [...prev, ...fetchedChallenges]);
       setOffset(newOffset);
       setHasMore(fetchedChallenges.length === pageSize);
@@ -213,14 +213,14 @@ export function useChallengeById(
     try {
       setLoading(true);
       setError(null);
-      
+
       const challengeRepo = new ChallengeRepository(context);
       const userRepo = new UserRepository(context);
       const userService = new UserService(context, userRepo);
       const challengeService = new ChallengeService(context, challengeRepo, userService);
-      
+
       const fetchedChallenge = await challengeService.getChallengeById(challengeId);
-      
+
       if (fetchedChallenge) {
         setChallenge(fetchedChallenge);
         return true;
@@ -241,14 +241,14 @@ export function useChallengeById(
     try {
       setLoading(true);
       setError(null);
-      
+
       const challengeRepo = new ChallengeRepository(context);
       const userRepo = new UserRepository(context);
       const userService = new UserService(context, userRepo);
       const challengeService = new ChallengeService(context, challengeRepo, userService);
-      
+
       const fetchedChallenge = await challengeService.getChallengeById(challengeId);
-      
+
       if (fetchedChallenge) {
         setChallenge(fetchedChallenge);
       } else {

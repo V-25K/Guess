@@ -129,8 +129,17 @@ export class ChallengeRepository extends BaseRepository {
    * Increment the players_completed count for a challenge
    */
   async incrementPlayersCompleted(challengeId: string): Promise<boolean> {
-    return this.executeBooleanFunction('increment_players_completed', {
-      p_challenge_id: challengeId,
-    });
+    // Fallback: Read-Modify-Write since RPC might be missing
+    try {
+      const challenge = await this.findById(challengeId);
+      if (!challenge) return false;
+
+      return this.update(challengeId, {
+        players_completed: (challenge.players_completed || 0) + 1
+      });
+    } catch (error) {
+      console.error('Failed to increment players_completed:', error);
+      return false;
+    }
   }
 }

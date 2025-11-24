@@ -3,7 +3,7 @@
  * Uses HTML/CSS/JS for native text input support
  */
 
-import type { Context } from '@devvit/public-api';
+
 import type { GameChallenge } from '../../../shared/models/challenge.types.js';
 
 export type GameplayWebviewProps = {
@@ -18,8 +18,8 @@ export type GameplayWebviewProps = {
  * Generate HTML for the gameplay webview
  */
 export function generateGameplayHTML(props: GameplayWebviewProps): string {
-  const { challenge, score, message, isGameOver, revealedCount } = props;
-  
+  const { challenge, score, message, isGameOver } = props;
+
   return `
 <!DOCTYPE html>
 <html>
@@ -250,10 +250,10 @@ export function generateGameplayHTML(props: GameplayWebviewProps): string {
   <div class="images-grid">
     ${challenge.images.map((img, idx) => `
       <div class="image-box ${img.isRevealed ? 'revealed' : ''}" onclick="revealImage(${idx})">
-        ${img.isRevealed 
-          ? `<img src="${img.url}" alt="Hint ${idx + 1}">` 
-          : '<div class="lock">🔒</div>'
-        }
+        ${img.isRevealed
+      ? `<img src="${img.url}" alt="Hint ${idx + 1}">`
+      : '<div class="lock">🔒</div>'
+    }
       </div>
     `).join('')}
   </div>

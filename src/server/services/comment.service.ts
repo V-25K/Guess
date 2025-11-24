@@ -8,7 +8,7 @@ import { BaseService } from './base.service.js';
 import { CommentRepository } from '../repositories/comment.repository.js';
 import { UserService } from './user.service.js';
 import { getCommentReward } from '../../shared/utils/reward-calculator.js';
-import type { CommentReward, CommentRewardCreate } from '../../shared/models/comment.types.js';
+import type { CommentReward } from '../../shared/models/comment.types.js';
 
 export class CommentService extends BaseService {
   constructor(
@@ -33,7 +33,7 @@ export class CommentService extends BaseService {
     return this.withBooleanErrorHandling(
       async () => {
         const reward = getCommentReward();
-        
+
         const success = await this.withRetry(
           () => this.commentRepo.trackCommentAtomic(
             challengeId,
@@ -54,10 +54,10 @@ export class CommentService extends BaseService {
             },
           }
         );
-        
+
         if (success) {
           this.userService.invalidateUserCache(creatorId);
-          
+
           this.logInfo(
             'CommentService',
             `Awarded ${reward.points} points and ${reward.exp} exp to creator ${creatorId} for comment ${commentId}`
@@ -68,7 +68,7 @@ export class CommentService extends BaseService {
             `Comment ${commentId} was not rewarded (duplicate or self-comment)`
           );
         }
-        
+
         return success;
       },
       'Failed to track comment'
@@ -83,14 +83,14 @@ export class CommentService extends BaseService {
     return this.withBooleanErrorHandling(
       async () => {
         const success = await this.userService.awardPoints(creatorId, points, experience);
-        
+
         if (success) {
           this.logInfo(
             'CommentService',
             `Awarded ${points} points and ${experience} exp to creator ${creatorId}`
           );
         }
-        
+
         return success;
       },
       'Failed to award comment reward'
@@ -141,7 +141,7 @@ export class CommentService extends BaseService {
   async getCreatorCommentRewards(creatorId: string): Promise<{ totalComments: number; totalPoints: number; totalExp: number }> {
     try {
       const stats = await this.commentRepo.getCreatorStats(creatorId);
-      
+
       return {
         totalComments: stats?.totalComments || 0,
         totalPoints: stats?.totalPoints || 0,

@@ -52,12 +52,12 @@ export class ChallengeService extends BaseService {
           return null;
         }
 
-        // Validate image count (2-5 images)
+        // Validate image count (2-3 images)
         const imageUrls = challenge.image_url.split(',').map(url => url.trim()).filter(url => url.length > 0);
-        if (imageUrls.length < 2 || imageUrls.length > 5) {
+        if (imageUrls.length < 2 || imageUrls.length > 3) {
           this.logError(
             'ChallengeService.createChallenge',
-            `Invalid image count: ${imageUrls.length}. Must be between 2 and 5.`
+            `Invalid image count: ${imageUrls.length}. Must be between 2 and 3.`
           );
           return null;
         }
@@ -401,10 +401,10 @@ export class ChallengeService extends BaseService {
     const result = await this.withErrorHandling(
       async () => {
         // Validate image count
-        if (imageUrls.length < 2 || imageUrls.length > 5) {
+        if (imageUrls.length < 2 || imageUrls.length > 3) {
           this.logError(
             'ChallengeService.uploadChallengeImages',
-            `Invalid image count: ${imageUrls.length}. Must be between 2 and 5.`
+            `Invalid image count: ${imageUrls.length}. Must be between 2 and 3.`
           );
           return [];
         }
@@ -513,8 +513,8 @@ export class ChallengeService extends BaseService {
       if (imageUrls.length < 2) {
         errors.push('At least 2 images are required');
       }
-      if (imageUrls.length > 5) {
-        errors.push('Maximum 5 images allowed');
+      if (imageUrls.length > 3) {
+        errors.push('Maximum 3 images allowed');
       }
     }
 

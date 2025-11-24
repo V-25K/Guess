@@ -29,18 +29,18 @@ export interface ErrorBoundaryProps {
  * ```
  */
 export const ErrorBoundary: Devvit.BlockComponent<ErrorBoundaryProps> = (
-  { children, fallback, onError, onReset },
+  { children, fallback, onReset },
   context
 ) => {
   const { useState } = context;
-  
+
   const [hasError, setHasError] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   const handleReset = () => {
     setHasError(false);
     setErrorMessage('');
-    
+
     if (onReset) {
       onReset();
     }
@@ -59,7 +59,7 @@ export const ErrorBoundary: Devvit.BlockComponent<ErrorBoundaryProps> = (
           imageWidth={192}
           resizeMode="fit"
         />
-        
+
         <vstack
           padding="medium"
           gap="medium"
@@ -70,12 +70,12 @@ export const ErrorBoundary: Devvit.BlockComponent<ErrorBoundaryProps> = (
         >
           <vstack gap="medium" alignment="center middle">
             <text size="xxlarge">⚠️</text>
-            
+
             <vstack gap="small" alignment="center middle">
               <text size="large" weight="bold" color="#D32F2F">
                 Something went wrong
               </text>
-              
+
               <text size="medium" color="#666666" alignment="center middle">
                 An error occurred while rendering this component
               </text>
@@ -109,7 +109,7 @@ export const ErrorBoundary: Devvit.BlockComponent<ErrorBoundaryProps> = (
               >
                 Try Again
               </button>
-              
+
               <text size="xsmall" color="#999999" alignment="center middle">
                 If the problem persists, please contact support
               </text>
@@ -141,7 +141,7 @@ export function withErrorBoundary<P extends object>(
     onReset?: () => void;
   }
 ): Devvit.BlockComponent<P> {
-  return (props: P, context) => {
+  return (props: P) => {
     return (
       <ErrorBoundary
         fallback={options?.fallback}

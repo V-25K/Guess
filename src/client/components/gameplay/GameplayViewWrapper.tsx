@@ -36,7 +36,6 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     userId,
     currentChallenge,
     challenges,
-    currentChallengeIndex,
     onNextChallenge,
     onBackToMenu,
   },
@@ -50,6 +49,8 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     message: string;
     isGameOver: boolean;
     isCorrect: boolean;
+    playersCompleted: number;
+    uniquePlayerCount: number;
   }>({
     attemptCount: 0,
     attemptsRemaining: 10,
@@ -57,6 +58,8 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     message: 'What connects these images?',
     isGameOver: false,
     isCorrect: false,
+    playersCompleted: currentChallenge?.players_completed || 0,
+    uniquePlayerCount: currentChallenge?.players_played || 0,
   });
 
   // Trigger state for answer submission (useAsync pattern)
@@ -65,51 +68,72 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
   // Polyfill for useRef since it's not available in this version
   const [isProcessingRef] = useState<{ current: boolean }>({ current: false });
 
-  // Check for existing attempt status
-  const { data: attemptData, loading: checkingCompletion } = useAsync(async () => {
+  // Check for existing attempt status and fresh challenge data
+  const { data: loadData, loading: checkingCompletion } = useAsync(async () => {
     if (!currentChallenge || !userId) return null;
 
     const attemptRepo = new AttemptRepository(context);
     const userRepo = new UserRepository(context);
+    const challengeRepo = new ChallengeRepository(context);
     const userService = new UserService(context, userRepo);
     const attemptService = new AttemptService(context, attemptRepo, userService);
 
-    // Get attempt regardless of completion status
-    return await attemptService.getAttempt(userId, currentChallenge.id);
+    // Fetch attempt and fresh challenge data in parallel
+    const [attempt, challenge] = await Promise.all([
+      attemptService.getAttempt(userId, currentChallenge.id),
+      challengeRepo.findById(currentChallenge.id)
+    ]);
+
+    return { attempt, challenge };
   }, {
     depends: [currentChallenge?.id || '', userId],
     finally: (data) => {
       // Guard: Don't update state if we are currently processing a guess
       if (isProcessingRef.current) return;
 
-      if (data) {
+      if (data && data.attempt) {
         // Calculate potential score for NEXT attempt
-        const potentialScore = calculatePotentialScore(data.attempts_made);
+        const potentialScore = calculatePotentialScore(data.attempt.attempts_made);
 
         setGameState({
-          attemptCount: data.attempts_made,
-          attemptsRemaining: data.game_over ? 0 : Math.max(0, 10 - data.attempts_made),
+          attemptCount: data.attempt.attempts_made,
+          attemptsRemaining: data.attempt.game_over ? 0 : Math.max(0, 10 - data.attempt.attempts_made),
           potentialScore: potentialScore,
-          message: data.is_solved
-            ? `You earned +${data.points_earned} points!`
-            : data.game_over
+          message: data.attempt.is_solved
+            ? `You earned +${data.attempt.points_earned} points!`
+            : data.attempt.game_over
               ? 'You\'ve used all 10 attempts'
               : 'What connects these images?',
-          isGameOver: data.game_over || data.is_solved,
-          isCorrect: data.is_solved,
+          isGameOver: data.attempt.game_over || data.attempt.is_solved,
+          isCorrect: data.attempt.is_solved,
+          playersCompleted: data.challenge?.players_completed || currentChallenge?.players_completed || 0,
+          uniquePlayerCount: data.challenge?.players_played || currentChallenge?.players_played || 0,
         });
+      } else if (data && !data.attempt) {
+        // No attempt yet, but update challenge stats
+        setGameState(prev => ({
+          ...prev,
+          attemptCount: 0,
+          attemptsRemaining: 10,
+          potentialScore: 30,
+          message: 'What connects these images?',
+          isGameOver: false,
+          isCorrect: false,
+          playersCompleted: data.challenge?.players_completed || currentChallenge?.players_completed || 0,
+          uniquePlayerCount: data.challenge?.players_played || currentChallenge?.players_played || 0,
+        }));
       }
     }
   });
 
-  const isCompleted = attemptData?.is_solved || false;
-  const isGameOver = attemptData?.game_over || false;
-  const completedScore = attemptData?.points_earned || 0;
+  const isCompleted = loadData?.attempt?.is_solved || false;
+  const isGameOver = loadData?.attempt?.game_over || false;
+  const completedScore = loadData?.attempt?.points_earned || 0;
 
 
 
   // useAsync pattern: Process answer when submittedGuess changes
-  const { data: answerResult, loading: isProcessing, error: processingError } = useAsync(
+  const { loading: isProcessing } = useAsync(
     async () => {
       if (!submittedGuess || !currentChallenge) return null;
 
@@ -134,15 +158,28 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
       finally: (result) => {
         if (result) {
           // Update game state with attempt tracking data
-          setGameState({
-            attemptCount: 10 - result.attemptsRemaining,
-            attemptsRemaining: result.attemptsRemaining,
-            potentialScore: result.potentialScore,
-            message: result.isCorrect
-              ? `You earned +${result.reward?.points || 0} points!`
-              : result.explanation,
-            isGameOver: result.gameOver,
-            isCorrect: result.isCorrect,
+          setGameState(prev => {
+            // Check if this was the first attempt (attemptsRemaining went from 10 to 9)
+            // If so, increment uniquePlayerCount
+            const isFirstAttempt = prev.attemptsRemaining === 10 && result.attemptsRemaining < 10;
+
+            return {
+              ...prev,
+              attemptCount: 10 - result.attemptsRemaining,
+              attemptsRemaining: result.attemptsRemaining,
+              potentialScore: result.potentialScore,
+              message: result.isCorrect
+                ? `You earned +${result.reward?.points || 0} points!`
+                : result.explanation,
+              isGameOver: result.gameOver,
+              isCorrect: result.isCorrect,
+              playersCompleted: result.isCorrect
+                ? (prev.playersCompleted || 0) + 1
+                : prev.playersCompleted,
+              uniquePlayerCount: isFirstAttempt
+                ? (prev.uniquePlayerCount || 0) + 1
+                : prev.uniquePlayerCount,
+            };
           });
         }
       }
@@ -236,8 +273,8 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
       checkingCompletion={checkingCompletion}
 
       isProcessing={isProcessing}
-      uniquePlayerCount={currentChallenge.players_played || 0}
-      playersCompleted={currentChallenge.players_completed || 0}
+      uniquePlayerCount={gameState.uniquePlayerCount}
+      playersCompleted={gameState.playersCompleted}
     />
   );
 };
