@@ -66,7 +66,7 @@ export const AnswerExplanationView: Devvit.BlockComponent<AnswerExplanationViewP
                 </text>
             </vstack>
 
-            {/* Image Carousel - Takes 70% of space */}
+            {/* Image Carousel - Compact */}
             <vstack
                 width="100%"
                 padding="small"
@@ -75,75 +75,71 @@ export const AnswerExplanationView: Devvit.BlockComponent<AnswerExplanationViewP
                 border="thin"
                 borderColor="#E0E0E0"
                 gap="small"
-                grow
             >
                 <text size="small" weight="bold" color="#1c1c1c">
                     📸 {currentImageIndex + 1}/{challenge.images.length}
                 </text>
 
-                {/* Image Display - Smaller size */}
-                <vstack
-                    width="100%"
-                    alignment="center middle"
-                    gap="small"
-                    grow
-                >
+                {/* Image Display with Overlay Navigation */}
+                <zstack width="100%" height="180px" alignment="center middle">
                     <image
                         url={currentImage.url}
-                        imageWidth={200}
-                        imageHeight={200}
-                        width="200px"
-                        height="200px"
+                        imageWidth={180}
+                        imageHeight={180}
+                        width="180px"
+                        height="180px"
                         resizeMode="cover"
                     />
 
-                    {/* Compact Image Description */}
-                    <vstack
-                        width="100%"
-                        padding="small"
-                        backgroundColor="#F6F7F8"
-                        cornerRadius="small"
-                    >
-                        <text size="small" color="#666666" wrap alignment="center">
-                            {currentImage.description || 'No description provided'}
-                        </text>
-                    </vstack>
-                </vstack>
-
-                {/* Compact Navigation Controls */}
-                <hstack width="100%" alignment="center middle" gap="small">
-                    <button
-                        onPress={handlePrevious}
-                        appearance="primary"
-                        size="small"
-                        disabled={isFirstImage}
-                        icon="left"
-                    />
-
-                    {/* Page Indicators */}
-                    <hstack gap="small" alignment="center middle">
-                        {challenge.images.map((_, index) => (
-                            <vstack
-                                key={`indicator-${index}`}
-                                width="6px"
-                                height="6px"
-                                backgroundColor={index === currentImageIndex ? "#4CAF50" : "#E0E0E0"}
-                                cornerRadius="full"
-                            />
-                        ))}
+                    {/* Navigation Overlay */}
+                    <hstack width="100%" height="100%" alignment="middle" padding="xsmall">
+                        <button
+                            onPress={handlePrevious}
+                            appearance="secondary"
+                            size="small"
+                            disabled={isFirstImage}
+                            icon="left"
+                        />
+                        <spacer grow />
+                        <button
+                            onPress={handleNext}
+                            appearance="secondary"
+                            size="small"
+                            disabled={isLastImage}
+                            icon="right"
+                        />
                     </hstack>
 
-                    <button
-                        onPress={handleNext}
-                        appearance="primary"
-                        size="small"
-                        disabled={isLastImage}
-                        icon="right"
-                    />
-                </hstack>
+                    {/* Page Indicators Overlay */}
+                    <vstack width="100%" height="100%" alignment="bottom center" padding="small">
+                        <hstack gap="small" alignment="center middle">
+                            {challenge.images.map((_, index) => (
+                                <vstack
+                                    key={`indicator-${index}`}
+                                    width="6px"
+                                    height="6px"
+                                    backgroundColor={index === currentImageIndex ? "#4CAF50" : "rgba(255, 255, 255, 0.8)"}
+                                    cornerRadius="full"
+                                />
+                            ))}
+                        </hstack>
+                    </vstack>
+                </zstack>
+
+                {/* Description */}
+                <vstack
+                    width="100%"
+                    padding="small"
+                    backgroundColor="#F6F7F8"
+                    cornerRadius="small"
+                >
+                    <text size="small" color="#666666" wrap alignment="center">
+                        {currentImage.description || 'No description provided'}
+                    </text>
+                </vstack>
             </vstack>
 
-            {/* Compact Answer Explanation */}
+            {/* Answer Explanation - Takes remaining space */}
             <vstack
                 width="100%"
                 padding="small"
@@ -152,6 +148,7 @@ export const AnswerExplanationView: Devvit.BlockComponent<AnswerExplanationViewP
                 border="thin"
                 borderColor="#FFB300"
                 gap="none"
+                grow
             >
                 <text size="xsmall" color="#F57C00" weight="bold">
                     💡 Explanation:

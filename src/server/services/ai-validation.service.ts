@@ -259,10 +259,11 @@ export class AIValidationService extends BaseService {
     const isCorrect = judgment === "CORRECT";
 
     const safeExplanation = explanation || this.getDefaultExplanation(isCorrect);
+    const censoredExplanation = this.censorResponse(safeExplanation, challenge.correct_answer);
 
     return {
       isCorrect,
-      explanation: safeExplanation,
+      explanation: censoredExplanation,
       judgment,
     };
   }
@@ -322,37 +323,41 @@ export class AIValidationService extends BaseService {
     const normalizedGuess = this.normalizeText(guess);
     const normalizedAnswer = this.normalizeText(challenge.correct_answer);
 
+    let result: ValidationResult;
+
     if (!normalizedGuess || !normalizedAnswer) {
-      return {
+      result = {
         isCorrect: false,
         explanation: this.getShortResponse("incorrect", attemptNumber, challenge, pastGuesses),
         judgment: "INCORRECT",
       };
+    } else {
+      const similarity = this.computeSimilarity(normalizedGuess, normalizedAnswer);
+
+      if (similarity >= 0.9 || normalizedGuess === normalizedAnswer) {
+        result = {
+          isCorrect: true,
+          explanation: this.getShortResponse("correct", attemptNumber, challenge, pastGuesses),
+          judgment: "CORRECT",
+        };
+      } else if (similarity >= 0.6 || this.hasTokenOverlap(normalizedGuess, normalizedAnswer)) {
+        result = {
+          isCorrect: false,
+          explanation: this.getShortResponse("close", attemptNumber, challenge, pastGuesses),
+          judgment: "CLOSE",
+        };
+      } else {
+        result = {
+          isCorrect: false,
+          explanation: this.getShortResponse("incorrect", attemptNumber, challenge, pastGuesses),
+          judgment: "INCORRECT",
+        };
+      }
     }
 
-    const similarity = this.computeSimilarity(normalizedGuess, normalizedAnswer);
-
-    if (similarity >= 0.9 || normalizedGuess === normalizedAnswer) {
-      return {
-        isCorrect: true,
-        explanation: this.getShortResponse("correct", attemptNumber, challenge, pastGuesses),
-        judgment: "CORRECT",
-      };
-    }
-
-    if (similarity >= 0.6 || this.hasTokenOverlap(normalizedGuess, normalizedAnswer)) {
-      return {
-        isCorrect: false,
-        explanation: this.getShortResponse("close", attemptNumber, challenge, pastGuesses),
-        judgment: "CLOSE",
-      };
-    }
-
-    return {
-      isCorrect: false,
-      explanation: this.getShortResponse("incorrect", attemptNumber, challenge, pastGuesses),
-      judgment: "INCORRECT",
-    };
+    // Censor the explanation in fallback result too
+    result.explanation = this.censorResponse(result.explanation, challenge.correct_answer);
+    return result;
   }
 
   private normalizeText(value: string): string {
@@ -519,6 +524,26 @@ export class AIValidationService extends BaseService {
     }
 
     return `${prefix}. Hint: ${hint}`;
+  }
+
+  /**
+   * Censor the answer from the text by replacing it with a block character
+   */
+  private censorResponse(text: string, answer: string): string {
+    if (!text || !answer) return text;
+
+    // Normalize answer for matching
+    const normalizedAnswer = answer.trim();
+    if (normalizedAnswer.length === 0) return text;
+
+    // Escape special regex characters in the answer
+    const escapedAnswer = normalizedAnswer.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    // Create a case-insensitive regex to find the answer
+    const regex = new RegExp(escapedAnswer, 'gi');
+
+    // Replace with block characters
+    return text.replace(regex, '████');
   }
 
   /**
