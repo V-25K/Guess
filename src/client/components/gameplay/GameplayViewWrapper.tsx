@@ -25,6 +25,7 @@ export interface GameplayViewWrapperProps {
   currentChallengeIndex: number;
   onNextChallenge: () => void;
   onBackToMenu: () => void;
+  isLoadingNext?: boolean;
 }
 
 /**
@@ -38,6 +39,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     challenges,
     onNextChallenge,
     onBackToMenu,
+    isLoadingNext = false,
   },
   context
 ) => {
@@ -275,6 +277,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
       isProcessing={isProcessing}
       uniquePlayerCount={gameState.uniquePlayerCount}
       playersCompleted={gameState.playersCompleted}
+      isLoadingNext={isLoadingNext}
     />
   );
 };

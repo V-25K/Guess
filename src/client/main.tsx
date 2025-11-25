@@ -259,12 +259,16 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     const activeChallenges = isViewingSpecificChallenge ? challenges : availableChallenges;
     const currentChallenge = activeChallenges[currentChallengeIndex] || null;
 
+    const [isLoadingNext, setIsLoadingNext] = useState(false);
+
     const handleNextChallenge = async () => {
         try {
+            setIsLoadingNext(true);
             if (isViewingSpecificChallenge) {
                 // When viewing a specific challenge, switch to browsing mode
                 setIsViewingSpecificChallenge(false);
                 setCurrentChallengeIndex(0);
+                setIsLoadingNext(false);
                 return;
             }
 
@@ -274,6 +278,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             // Move to next available challenge
             if (nextIndex < availableChallenges.length && availableChallenges[nextIndex]) {
                 setCurrentChallengeIndex(nextIndex);
+                setIsLoadingNext(false);
             } else {
                 // Refresh available challenges to check if any new ones are available
                 // OPTIMIZATION: Fetch all user attempts in one go instead of N+1 requests
@@ -296,12 +301,15 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                 }
                 setAvailableChallenges(available);
                 setCurrentChallengeIndex(0);
+                setIsLoadingNext(false);
             }
         } catch (error) {
             console.error('[Main] Error in handleNextChallenge:', error);
             context.ui.showToast('⚠️ Error loading next challenge');
+            setIsLoadingNext(false);
         }
     };
+
 
     const handleSubscribe = async () => {
         try {
@@ -343,7 +351,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
         }
     };
 
-    const handleChallengeCreated = async () => {
+    const handleChallengeCreated = async (createdChallenge: any) => {
         try {
             const dbChallenges = await services.challengeService.getChallenges();
             const gameChallenges = convertToGameChallenges(dbChallenges);
@@ -373,7 +381,15 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             const newRateLimitCheck = await services.userService.canCreateChallenge(userId);
             setCanCreateChallenge(newRateLimitCheck.canCreate);
 
-            navigateTo('menu');
+            // Find the newly created challenge and navigate to it
+            const newChallengeIndex = gameChallenges.findIndex(c => c.id === createdChallenge.id);
+            if (newChallengeIndex !== -1) {
+                setCurrentChallengeIndex(newChallengeIndex);
+                setIsViewingSpecificChallenge(true);
+                navigateTo('gameplay');
+            } else {
+                navigateTo('menu');
+            }
         } catch (error) {
             console.error('[Main] Error in handleChallengeCreated:', error);
             context.ui.showToast('⚠️ Error refreshing challenges');
@@ -444,6 +460,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                             setIsViewingSpecificChallenge(false);
                             navigateTo('menu');
                         }}
+                        isLoadingNext={isLoadingNext}
                     />
                 </ErrorBoundary>
             );
@@ -478,6 +495,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     currentChallengeIndex={currentChallengeIndex}
                     onNextChallenge={handleNextChallenge}
                     onBackToMenu={() => navigateTo('menu')}
+                    isLoadingNext={isLoadingNext}
                 />
             </ErrorBoundary>
         );

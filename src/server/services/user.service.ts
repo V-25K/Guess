@@ -59,6 +59,17 @@ export class UserService extends BaseService {
             let dbProfile = await this.userRepo.findById(userId);
 
             if (dbProfile) {
+              // Validate and correct level if needed (self-healing for formula changes or bugs)
+              const correctLevel = calculateLevel(dbProfile.total_experience);
+              if (dbProfile.level !== correctLevel) {
+                this.logInfo(
+                  'UserService',
+                  `Auto-correcting level for user ${userId}: ${dbProfile.level} → ${correctLevel} (${dbProfile.total_experience} XP)`
+                );
+                await this.userRepo.updateProfile(userId, { level: correctLevel });
+                dbProfile.level = correctLevel;
+              }
+
               if (username && dbProfile.username !== username) {
                 this.logInfo('UserService', `Updating stale username for user ${userId}: ${dbProfile.username} -> ${username}`);
                 await this.userRepo.updateProfile(userId, { username });

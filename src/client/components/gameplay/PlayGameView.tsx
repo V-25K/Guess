@@ -28,6 +28,7 @@ export interface PlayGameViewProps {
     isProcessing: boolean;
     uniquePlayerCount: number;
     playersCompleted: number;
+    isLoadingNext?: boolean;
 }
 
 /**
@@ -123,6 +124,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
     isProcessing,
     uniquePlayerCount,
     playersCompleted,
+    isLoadingNext = false,
 }) => {
     const [enlargedImageIndex, setEnlargedImageIndex] = useState<number | null>(null);
     const [showExplanation, setShowExplanation] = useState(false);
@@ -454,8 +456,9 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                         appearance="primary"
                         size="medium"
                         width="100%"
+                        disabled={isLoadingNext}
                     >
-                        Next Challenge →
+                        {isLoadingNext ? 'Loading...' : 'Next Challenge →'}
                     </button>
                 </vstack>
             )}

@@ -3,7 +3,7 @@
  * Handles the entire challenge creation flow with form and UI
  */
 
-import { Devvit, useForm } from '@devvit/public-api';
+import { Devvit, useForm, useState, useAsync } from '@devvit/public-api';
 import type { ChallengeService } from '../../../server/services/challenge.service.js';
 import type { UserService } from '../../../server/services/user.service.js';
 import type { Challenge } from '../../../shared/models/challenge.types.js';
@@ -29,6 +29,121 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
     context
 ) => {
     const REQUIRED_LEVEL = 3;
+    const [isCreating, setIsCreating] = useState(false);
+
+    const [creationData, setCreationData] = useState<{
+        values: any;
+        timestamp: number;
+    } | null>(null);
+
+    useAsync(async () => {
+        if (!creationData) return null;
+
+        const { values } = creationData;
+
+        try {
+            const rateLimitCheck = await userService.canCreateChallenge(userId);
+            if (!rateLimitCheck.canCreate) {
+                context.ui.showToast('⏳ Please wait before creating another challenge');
+                setIsCreating(false);
+                setCreationData(null);
+                return null;
+            }
+
+            const imageUrlArray: string[] = [];
+            if (values.image1) imageUrlArray.push(values.image1);
+            if (values.image2) imageUrlArray.push(values.image2);
+            if (values.image3) imageUrlArray.push(values.image3);
+
+            if (imageUrlArray.length < 2 || imageUrlArray.length > 3) {
+                context.ui.showToast('❌ Please upload 2-3 images');
+                setIsCreating(false);
+                setCreationData(null);
+                return null;
+            }
+
+            // Collect image descriptions (max 100 chars each) - mandatory for uploaded images
+            const imageDescriptions: string[] = [];
+            if (values.image1) {
+                if (!values.desc1?.trim()) {
+                    context.ui.showToast('❌ Please describe Image 1');
+                    setIsCreating(false);
+                    setCreationData(null);
+                    return null;
+                }
+                imageDescriptions.push(values.desc1.trim().substring(0, 100));
+            }
+            if (values.image2) {
+                if (!values.desc2?.trim()) {
+                    context.ui.showToast('❌ Please describe Image 2');
+                    setIsCreating(false);
+                    setCreationData(null);
+                    return null;
+                }
+                imageDescriptions.push(values.desc2.trim().substring(0, 100));
+            }
+            if (values.image3) {
+                if (!values.desc3?.trim()) {
+                    context.ui.showToast('❌ Please describe Image 3');
+                    setIsCreating(false);
+                    setCreationData(null);
+                    return null;
+                }
+                imageDescriptions.push(values.desc3.trim().substring(0, 100));
+            }
+
+
+            const tagArray: string[] = values.tag
+                ? (Array.isArray(values.tag) ? values.tag : [values.tag])
+                : [];
+
+            // Fixed scoring values for attempt-based system
+            const maxScore = 30;
+            const scoreDeductionPerHint = 2;
+
+            const challenge = await challengeService.createChallenge({
+                creator_id: userId,
+                creator_username: username,
+                title: values.title.trim(),
+                description: null,
+                image_url: imageUrlArray.join(','),
+                image_descriptions: imageDescriptions,
+                answer_explanation: values.answerExplanation?.trim() || undefined,
+                correct_answer: values.answer.trim(),
+                tags: tagArray,
+                max_score: maxScore,
+                score_deduction_per_hint: scoreDeductionPerHint,
+                players_played: 0,
+                players_completed: 0,
+            });
+
+            if (challenge) {
+                // Create Reddit post for the challenge (in proper async context)
+                const postId = await challengeService.createRedditPostForChallenge(challenge.id);
+
+                if (postId) {
+                    context.ui.showToast('✅ Challenge created with post! +5 pts, +5 exp');
+                } else {
+                    context.ui.showToast('✅ Challenge created! +5 pts, +5 exp (post creation pending)');
+                }
+
+                onSuccess(challenge);
+            } else {
+                context.ui.showToast('❌ Failed to create challenge');
+                setIsCreating(false);
+                setCreationData(null);
+            }
+        } catch (error) {
+            console.error('Error creating challenge:', error);
+            context.ui.showToast('❌ Error creating challenge');
+            setIsCreating(false);
+            setCreationData(null);
+        }
+        return null;
+    }, {
+        depends: [creationData]
+    });
+
     const createForm = useForm(
         {
             title: 'Create Challenge',
@@ -127,98 +242,35 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
             cancelLabel: 'Cancel',
         },
         async (values) => {
-            try {
-                if (!values) {
-                    console.error('[ChallengeCreationView] No values received from form');
-                    context.ui.showToast('❌ Form data missing');
-                    return;
-                }
-
-                const rateLimitCheck = await userService.canCreateChallenge(userId);
-                if (!rateLimitCheck.canCreate) {
-                    context.ui.showToast('⏳ Please wait before creating another challenge');
-                    return;
-                }
-
-                const imageUrlArray: string[] = [];
-                if (values.image1) imageUrlArray.push(values.image1);
-                if (values.image2) imageUrlArray.push(values.image2);
-                if (values.image3) imageUrlArray.push(values.image3);
-
-                if (imageUrlArray.length < 2 || imageUrlArray.length > 3) {
-                    context.ui.showToast('❌ Please upload 2-3 images');
-                    return;
-                }
-
-                // Collect image descriptions (max 100 chars each) - mandatory for uploaded images
-                const imageDescriptions: string[] = [];
-                if (values.image1) {
-                    if (!values.desc1?.trim()) {
-                        context.ui.showToast('❌ Please describe Image 1');
-                        return;
-                    }
-                    imageDescriptions.push(values.desc1.trim().substring(0, 100));
-                }
-                if (values.image2) {
-                    if (!values.desc2?.trim()) {
-                        context.ui.showToast('❌ Please describe Image 2');
-                        return;
-                    }
-                    imageDescriptions.push(values.desc2.trim().substring(0, 100));
-                }
-                if (values.image3) {
-                    if (!values.desc3?.trim()) {
-                        context.ui.showToast('❌ Please describe Image 3');
-                        return;
-                    }
-                    imageDescriptions.push(values.desc3.trim().substring(0, 100));
-                }
-
-
-                const tagArray: string[] = values.tag
-                    ? (Array.isArray(values.tag) ? values.tag : [values.tag])
-                    : [];
-
-                // Fixed scoring values for attempt-based system
-                const maxScore = 30;
-                const scoreDeductionPerHint = 2;
-
-                const challenge = await challengeService.createChallenge({
-                    creator_id: userId,
-                    creator_username: username,
-                    title: values.title.trim(),
-                    description: null,
-                    image_url: imageUrlArray.join(','),
-                    image_descriptions: imageDescriptions,
-                    answer_explanation: values.answerExplanation?.trim() || undefined,
-                    correct_answer: values.answer.trim(),
-                    tags: tagArray,
-                    max_score: maxScore,
-                    score_deduction_per_hint: scoreDeductionPerHint,
-                    players_played: 0,
-                    players_completed: 0,
-                });
-
-                if (challenge) {
-                    // Create Reddit post for the challenge (in proper async context)
-                    const postId = await challengeService.createRedditPostForChallenge(challenge.id);
-
-                    if (postId) {
-                        context.ui.showToast('✅ Challenge created with post! +5 pts, +5 exp');
-                    } else {
-                        context.ui.showToast('✅ Challenge created! +5 pts, +5 exp (post creation pending)');
-                    }
-
-                    onSuccess(challenge);
-                } else {
-                    context.ui.showToast('❌ Failed to create challenge');
-                }
-            } catch (error) {
-                console.error('Error creating challenge:', error);
-                context.ui.showToast('❌ Error creating challenge');
+            if (!values) {
+                console.error('[ChallengeCreationView] No values received from form');
+                context.ui.showToast('❌ Form data missing');
+                return;
             }
+            setIsCreating(true);
+            setCreationData({ values, timestamp: Date.now() });
         }
     );
+
+    if (isCreating) {
+        return (
+            <vstack
+                alignment="center middle"
+                padding="medium"
+                gap="medium"
+                width="100%"
+                height="100%"
+                backgroundColor="#F6F7F8"
+            >
+                <text style="heading" size="xlarge" color="#FF4500">
+                    ✨ Creating Challenge...
+                </text>
+                <text style="body" color="#878a8c" alignment="center">
+                    Please wait while we set up your puzzle.
+                </text>
+            </vstack>
+        );
+    }
 
     return (
         <vstack

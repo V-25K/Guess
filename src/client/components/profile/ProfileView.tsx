@@ -1,13 +1,8 @@
-/**
- * ProfileView Component - Simplified & Compact
- * Displays all user stats in one clean screen
- * Uses context.cache() for automatic data loading
- */
-
 import { Devvit, useAsync } from '@devvit/public-api';
 import type { UserProfile } from '../../../shared/models/user.types.js';
 import type { UserService } from '../../../server/services/user.service.js';
 import { fetchAvatarUrl } from '../../../server/utils/challenge-utils.js';
+import { getExpForLevel } from '../../../shared/utils/level-calculator.js';
 
 export interface ProfileViewProps {
   userId: string;
@@ -74,24 +69,34 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
     );
   }
 
-  const successRate = profile.challenges_attempted > 0 
+  const successRate = profile.challenges_attempted > 0
     ? Math.round((profile.challenges_solved / profile.challenges_attempted) * 100)
     : 0;
+
+  // Calculate XP progress for current level
+  const expForNextLevel = getExpForLevel(profile.level + 1); // XP needed to reach NEXT level
+  let totalExpForCurrentLevel = 0;
+  // Sum XP required from level 2 to current level (to get XP at start of current level)
+  for (let i = 2; i <= profile.level; i++) {
+    totalExpForCurrentLevel += getExpForLevel(i);
+  }
+  const currentLevelExp = profile.total_experience - totalExpForCurrentLevel;
+  const progressPercentage = Math.min((currentLevelExp / expForNextLevel) * 100, 100);
 
   return (
     <vstack padding="medium" gap="small" width="100%" height="100%" backgroundColor="#F6F7F8">
       {/* Header - Username & Level */}
-      <hstack 
-        padding="medium" 
-        gap="medium" 
+      <hstack
+        padding="medium"
+        gap="medium"
         width="100%"
-        backgroundColor="#FFFFFF" 
+        backgroundColor="#FFFFFF"
         cornerRadius="medium"
         alignment="start middle"
       >
         {/* Avatar - Circular on the left */}
         {avatarUrl ? (
-          <image 
+          <image
             url={avatarUrl}
             imageWidth={80}
             imageHeight={80}
@@ -103,7 +108,7 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
         ) : (
           <text size="xxlarge">👤</text>
         )}
-        
+
         {/* Username and Level on the right */}
         <vstack gap="small" alignment="start middle" grow>
           <text size="xlarge" weight="bold" color="#1c1c1c">
@@ -117,17 +122,38 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
               • {profile.total_experience} XP
             </text>
           </hstack>
+
+          {/* XP Progress Bar */}
+          <vstack width="100%" gap="none">
+            <hstack width="100%" alignment="middle" gap="small">
+              <text size="xsmall" color="#878a8c">
+                {currentLevelExp}/{expForNextLevel} XP
+              </text>
+              <spacer grow />
+              <text size="xsmall" color="#878a8c">
+                {Math.round(progressPercentage)}%
+              </text>
+            </hstack>
+            <vstack width="100%" height="8px" backgroundColor="#E0E0E0" cornerRadius="full">
+              <vstack
+                width={`${progressPercentage}%`}
+                height="8px"
+                backgroundColor="#FF4500"
+                cornerRadius="full"
+              />
+            </vstack>
+          </vstack>
         </vstack>
       </hstack>
 
       {/* Stats Grid - Compact 2x2 */}
       <hstack gap="small" width="100%">
         {/* Points */}
-        <vstack 
-          grow 
-          padding="medium" 
-          gap="small" 
-          backgroundColor="#FFFFFF" 
+        <vstack
+          grow
+          padding="medium"
+          gap="small"
+          backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
@@ -139,11 +165,11 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
         </vstack>
 
         {/* Success Rate */}
-        <vstack 
-          grow 
-          padding="medium" 
-          gap="small" 
-          backgroundColor="#FFFFFF" 
+        <vstack
+          grow
+          padding="medium"
+          gap="small"
+          backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
@@ -157,11 +183,11 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
 
       <hstack gap="small" width="100%">
         {/* Solved */}
-        <vstack 
-          grow 
-          padding="medium" 
-          gap="small" 
-          backgroundColor="#FFFFFF" 
+        <vstack
+          grow
+          padding="medium"
+          gap="small"
+          backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
@@ -173,11 +199,11 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
         </vstack>
 
         {/* Created */}
-        <vstack 
-          grow 
-          padding="medium" 
-          gap="small" 
-          backgroundColor="#FFFFFF" 
+        <vstack
+          grow
+          padding="medium"
+          gap="small"
+          backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
@@ -190,10 +216,10 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
       </hstack>
 
       {/* Total Attempted - Full Width */}
-      <vstack 
-        padding="medium" 
-        gap="small" 
-        backgroundColor="#FFFFFF" 
+      <vstack
+        padding="medium"
+        gap="small"
+        backgroundColor="#FFFFFF"
         cornerRadius="medium"
         alignment="center middle"
         width="100%"
