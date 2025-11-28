@@ -23,6 +23,7 @@ import { AttemptRepository } from '../server/repositories/attempt.repository.js'
 import { CommentRepository } from '../server/repositories/comment.repository.js';
 
 import { useNavigation } from './hooks/useNavigation.js';
+import { useRewards } from './hooks/useRewards.js';
 
 import { NavigationBar, ViewContainer } from './components/navigation/index.js';
 import { ErrorBoundary, LoadingView, AllCaughtUpView } from './components/shared/index.js';
@@ -33,6 +34,8 @@ import { ChallengeCreationView } from './components/creation/index.js';
 import { MainMenuView } from './components/menu/index.js';
 import type { ChallengeCreationViewProps } from './components/creation/ChallengeCreationView.js';
 import type { MainMenuViewProps } from './components/menu/MainMenuView.js';
+import { RewardNotification } from './components/shared/RewardNotification.js';
+import { AwardsView } from './components/awards/AwardsView.js';
 
 import { convertToGameChallenges } from '../shared/utils/challenge-utils.js';
 import { fetchAvatarUrl } from '../server/utils/challenge-utils.js';
@@ -132,6 +135,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     const shouldOpenChallenge = postData?.openDirectly && postData?.challengeId;
 
     const { currentView, navigateTo } = useNavigation('loading');
+    const { currentReward, showReward, dismissReward } = useRewards();
 
     const [challenges, setChallenges] = useState<GameChallenge[]>([]);
     const [availableChallenges, setAvailableChallenges] = useState<GameChallenge[]>([]);
@@ -354,13 +358,13 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     };
 
     const handleChallengeCreated = async (createdChallenge: any) => {
-        
+
         // Refresh data in the background while success screen is shown
         try {
             // Refresh all challenges from database
             const dbChallenges = await services.challengeService.getChallenges();
             const gameChallenges = convertToGameChallenges(dbChallenges);
-            
+
             // Fetch avatars for new challenges
             await Promise.all(
                 gameChallenges.map(async (challenge) => {
@@ -374,7 +378,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     }
                 })
             );
-            
+
             setChallenges(gameChallenges);
 
             // Refresh available challenges (exclude own challenges)
@@ -443,7 +447,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     }
 
     if (currentView === 'gameplay') {
-        
+
         // If viewing a specific challenge, always show it (even if completed)
         if (isViewingSpecificChallenge) {
             // Safety check: ensure challenge exists
@@ -476,6 +480,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                             navigateTo('menu');
                         }}
                         isLoadingNext={isLoadingNext}
+                        onReward={showReward}
                     />
                 </ErrorBoundary>
             );
@@ -511,52 +516,80 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     onNextChallenge={handleNextChallenge}
                     onBackToMenu={() => navigateTo('menu')}
                     isLoadingNext={isLoadingNext}
+                    onReward={showReward}
                 />
             </ErrorBoundary>
         );
     }
 
     return (
-        <vstack width="100%" height="100%" gap="none">
-            <NavigationBar
-                currentView={currentView}
-                onNavigate={navigateTo}
-            />
+        <zstack width="100%" height="100%" alignment="center middle">
+            <vstack width="100%" height="100%" gap="none">
+                <NavigationBar
+                    currentView={currentView}
+                    onNavigate={navigateTo}
+                />
 
-            <ViewContainer currentView={currentView}>
-                {currentView === 'profile' && (
-                    <ErrorBoundary
-                        onError={() => {/* Error logged by ErrorBoundary component */ }}
-                        onReset={() => navigateTo('menu')}
-                    >
-                        <ProfileView
-                            userId={userId}
-                            username={username}
-                            userService={services.userService}
-                        />
-                    </ErrorBoundary>
-                )}
-                {currentView === 'leaderboard' && (
-                    <ErrorBoundary
-                        onError={() => {/* Error logged by ErrorBoundary component */ }}
-                        onReset={() => navigateTo('menu')}
-                    >
-                        <LeaderboardView
-                            userId={userId}
-                            leaderboardService={services.leaderboardService}
-                        />
-                    </ErrorBoundary>
-                )}
-                {currentView === 'create' && (
-                    <ErrorBoundary
-                        onError={() => {/* Error logged by ErrorBoundary component */ }}
-                        onReset={() => navigateTo('menu')}
-                    >
-                        <CreateView />
-                    </ErrorBoundary>
-                )}
-            </ViewContainer>
-        </vstack>
+                <ViewContainer currentView={currentView}>
+                    {currentView === 'profile' && (
+                        <ErrorBoundary
+                            onError={() => {/* Error logged by ErrorBoundary component */ }}
+                            onReset={() => navigateTo('menu')}
+                        >
+                            <ProfileView
+                                userId={userId}
+                                username={username}
+                                userService={services.userService}
+                            />
+                        </ErrorBoundary>
+                    )}
+                    {currentView === 'leaderboard' && (
+                        <ErrorBoundary
+                            onError={() => {/* Error logged by ErrorBoundary component */ }}
+                            onReset={() => navigateTo('menu')}
+                        >
+                            <LeaderboardView
+                                userId={userId}
+                                leaderboardService={services.leaderboardService}
+                            />
+                        </ErrorBoundary>
+                    )}
+                    {currentView === 'create' && (
+                        <ErrorBoundary
+                            onError={() => {/* Error logged by ErrorBoundary component */ }}
+                            onReset={() => navigateTo('menu')}
+                        >
+                            <CreateView />
+                        </ErrorBoundary>
+                    )}
+                    {currentView === 'awards' && (
+                        <ErrorBoundary
+                            onError={() => {/* Error logged by ErrorBoundary component */ }}
+                            onReset={() => navigateTo('menu')}
+                        >
+                            <AwardsView
+                                userId={userId}
+                                username={username}
+                                userService={services.userService}
+                                onBack={() => navigateTo('menu')}
+                            />
+                        </ErrorBoundary>
+                    )}
+                </ViewContainer>
+            </vstack>
+
+            {/* Reward Notification Overlay */}
+            {currentReward && (
+                <RewardNotification
+                    type={currentReward.type}
+                    points={currentReward.points}
+                    experience={currentReward.experience}
+                    level={currentReward.level}
+                    message={currentReward.message}
+                    onDismiss={dismissReward}
+                />
+            )}
+        </zstack>
     );
 };
 

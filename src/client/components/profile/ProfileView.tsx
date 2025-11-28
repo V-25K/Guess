@@ -84,10 +84,10 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
   const progressPercentage = Math.min((currentLevelExp / expForNextLevel) * 100, 100);
 
   return (
-    <vstack padding="medium" gap="small" width="100%" height="100%" backgroundColor="#F6F7F8">
+    <vstack padding="small" gap="small" width="100%" height="100%" backgroundColor="#F6F7F8">
       {/* Header - Username & Level */}
       <hstack
-        padding="medium"
+        padding="small"
         gap="medium"
         width="100%"
         backgroundColor="#FFFFFF"
@@ -150,68 +150,68 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
       <hstack gap="small" width="100%">
         {/* Points */}
         <vstack
-          grow
-          padding="medium"
+          width="49%"
+          padding="small"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
           <text size="large">🏆</text>
-          <text size="xxlarge" weight="bold" color="#FF4500">
+          <text size="xlarge" weight="bold" color="#FF4500">
             {profile.total_points}
           </text>
-          <text size="small" color="#878a8c">Points</text>
+          <text size="xsmall" color="#878a8c">Points</text>
         </vstack>
 
         {/* Success Rate */}
         <vstack
-          grow
-          padding="medium"
+          width="49%"
+          padding="small"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
           <text size="large">📊</text>
-          <text size="xxlarge" weight="bold" color="#46D160">
+          <text size="xlarge" weight="bold" color="#46D160">
             {successRate}%
           </text>
-          <text size="small" color="#878a8c">Win Rate</text>
+          <text size="xsmall" color="#878a8c">Win Rate</text>
         </vstack>
       </hstack>
 
       <hstack gap="small" width="100%">
         {/* Solved */}
         <vstack
-          grow
-          padding="medium"
+          width="49%"
+          padding="small"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
           <text size="large">✅</text>
-          <text size="xxlarge" weight="bold" color="#1c1c1c">
+          <text size="xlarge" weight="bold" color="#1c1c1c">
             {profile.challenges_solved}
           </text>
-          <text size="small" color="#878a8c">Solved</text>
+          <text size="xsmall" color="#878a8c">Solved</text>
         </vstack>
 
         {/* Created */}
         <vstack
-          grow
-          padding="medium"
+          width="49%"
+          padding="small"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
           <text size="large">✨</text>
-          <text size="xxlarge" weight="bold" color="#1c1c1c">
+          <text size="xlarge" weight="bold" color="#1c1c1c">
             {profile.challenges_created}
           </text>
-          <text size="small" color="#878a8c">Created</text>
+          <text size="xsmall" color="#878a8c">Created</text>
         </vstack>
       </hstack>
 
@@ -219,40 +219,40 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
       <hstack gap="small" width="100%">
         {/* Current Streak */}
         <vstack
-          grow
-          padding="medium"
+          width="49%"
+          padding="small"
           gap="small"
           backgroundColor={profile.current_streak > 0 ? "#FFF8E1" : "#FFFFFF"}
           cornerRadius="medium"
           alignment="center middle"
         >
           <text size="large">🔥</text>
-          <text size="xxlarge" weight="bold" color={profile.current_streak > 0 ? "#F57C00" : "#1c1c1c"}>
+          <text size="xlarge" weight="bold" color={profile.current_streak > 0 ? "#F57C00" : "#1c1c1c"}>
             {profile.current_streak || 0}
           </text>
-          <text size="small" color="#878a8c">Current Streak</text>
+          <text size="xsmall" color="#878a8c">Current Streak</text>
         </vstack>
 
         {/* Best Streak */}
         <vstack
-          grow
-          padding="medium"
+          width="49%"
+          padding="small"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
           <text size="large">⭐</text>
-          <text size="xxlarge" weight="bold" color="#1c1c1c">
+          <text size="xlarge" weight="bold" color="#1c1c1c">
             {profile.best_streak || 0}
           </text>
-          <text size="small" color="#878a8c">Best Streak</text>
+          <text size="xsmall" color="#878a8c">Best Streak</text>
         </vstack>
       </hstack>
 
       {/* Total Attempted - Full Width */}
       <vstack
-        padding="medium"
+        padding="small"
         gap="small"
         backgroundColor="#FFFFFF"
         cornerRadius="medium"
@@ -261,10 +261,10 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
       >
         <hstack gap="small" alignment="center middle">
           <text size="medium">🎮</text>
-          <text size="large" weight="bold" color="#1c1c1c">
+          <text size="medium" weight="bold" color="#1c1c1c">
             {profile.challenges_attempted}
           </text>
-          <text size="medium" color="#878a8c">
+          <text size="small" color="#878a8c">
             Total Challenges Attempted
           </text>
         </hstack>

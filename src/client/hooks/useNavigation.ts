@@ -11,7 +11,7 @@
 
 import { useState } from '@devvit/public-api';
 
-export type ViewType = 'menu' | 'gameplay' | 'profile' | 'leaderboard' | 'create' | 'loading';
+export type ViewType = 'menu' | 'gameplay' | 'profile' | 'leaderboard' | 'create' | 'loading' | 'awards';
 
 export interface NavigationState {
   currentView: ViewType;
@@ -53,10 +53,10 @@ export interface UseNavigationResult {
 export function useNavigation(initialView: ViewType = 'menu'): UseNavigationResult {
   // State for current view
   const [currentView, setCurrentView] = useState<ViewType>(initialView);
-  
+
   // State for previous view
   const [previousView, setPreviousView] = useState<ViewType | null>(null);
-  
+
   // State for navigation history
   const [history, setHistory] = useState<ViewType[]>([initialView]);
 
@@ -65,18 +65,18 @@ export function useNavigation(initialView: ViewType = 'menu'): UseNavigationResu
    * Adds the new view to history and updates current/previous views
    */
   const navigateTo = (view: ViewType): void => {
-    
+
     // Don't navigate if already on the same view
     if (view === currentView) {
       return;
     }
-    
+
     // Update previous view
     setPreviousView(currentView);
-    
+
     // Update current view
     setCurrentView(view);
-    
+
     // Add to history
     setHistory(prev => [...prev, view]);
   };
@@ -90,15 +90,15 @@ export function useNavigation(initialView: ViewType = 'menu'): UseNavigationResu
       // Can't go back if we're at the first view
       return;
     }
-    
+
     // Remove current view from history
     const newHistory = [...history];
     newHistory.pop();
     setHistory(newHistory);
-    
+
     // Get the previous view
     const previousViewFromHistory = newHistory[newHistory.length - 1];
-    
+
     // Update views
     setPreviousView(currentView);
     setCurrentView(previousViewFromHistory);

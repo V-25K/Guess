@@ -11,6 +11,7 @@
 import { Devvit, useForm, useAsync, useState } from '@devvit/public-api';
 import { PlayGameView } from './PlayGameView.js';
 import type { GameChallenge } from '../../../shared/models/challenge.types.js';
+import type { Reward } from '../../hooks/useRewards.js';
 import { AttemptService } from '../../../server/services/attempt.service.js';
 import { UserService } from '../../../server/services/user.service.js';
 import { AttemptRepository } from '../../../server/repositories/attempt.repository.js';
@@ -25,6 +26,7 @@ export interface GameplayViewWrapperProps {
   currentChallengeIndex: number;
   onNextChallenge: () => void;
   onBackToMenu: () => void;
+  onReward?: (reward: Omit<Reward, 'id' | 'timestamp'>) => void;
   isLoadingNext?: boolean;
 }
 
@@ -39,6 +41,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     challenges,
     onNextChallenge,
     onBackToMenu,
+    onReward,
     isLoadingNext = false,
   },
   context
@@ -175,6 +178,19 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
               const bonusLabels = bonuses.map(b => b.label).join(' ');
               const totalPoints = result.reward.totalPoints || result.reward.points || 0;
               rewardMessage = `+${totalPoints} points!${bonusLabels ? ' ' + bonusLabels : ''}`;
+
+              // Trigger reward notification
+              if (onReward) {
+                onReward({
+                  type: 'challenge_solved',
+                  points: result.reward.points,
+                  experience: result.reward.experience,
+                  level: 0, // Level handled by separate check usually, or we could pass it if available
+                  message: rewardMessage,
+                  bonuses: bonuses,
+                  totalPoints: totalPoints,
+                });
+              }
             }
 
             return {

@@ -17,10 +17,10 @@ export const NavigationBar: Devvit.BlockComponent<NavigationBarProps> = (
   const isActive = (view: ViewType) => currentView === view;
 
   return (
-    <hstack 
-      width="100%" 
-      padding="small" 
-      gap="small" 
+    <hstack
+      width="100%"
+      padding="small"
+      gap="small"
       backgroundColor="#FFFFFF"
       borderColor="#E0E0E0"
     >
@@ -31,7 +31,7 @@ export const NavigationBar: Devvit.BlockComponent<NavigationBarProps> = (
       >
         🏠 Menu
       </button>
-      
+
       <button
         appearance={isActive('profile') ? 'primary' : 'secondary'}
         size="small"
@@ -39,13 +39,21 @@ export const NavigationBar: Devvit.BlockComponent<NavigationBarProps> = (
       >
         👤 Profile
       </button>
-      
+
       <button
         appearance={isActive('leaderboard') ? 'primary' : 'secondary'}
         size="small"
         onPress={() => onNavigate('leaderboard')}
       >
         🏆 Leaderboard
+      </button>
+
+      <button
+        appearance={isActive('awards') ? 'primary' : 'secondary'}
+        size="small"
+        onPress={() => onNavigate('awards')}
+      >
+        🏅 Awards
       </button>
     </hstack>
   );
