@@ -7,12 +7,20 @@ import { Devvit, useState } from '@devvit/public-api';
 import type { GameChallenge } from '../../../shared/models/index.js';
 import { AnswerExplanationView } from './AnswerExplanationView.js';
 
+export type BonusDisplay = {
+    type: string;
+    points: number;
+    exp: number;
+    label: string;
+};
+
 export interface PlayGameViewProps {
     challenge: GameChallenge;
     gameState: {
         message: string;
         isGameOver: boolean;
         isCorrect: boolean;
+        bonuses?: BonusDisplay[];
     };
     attemptCount: number;
     attemptsRemaining: number;
@@ -408,6 +416,22 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                             <text size="small" color="#1B5E20">
                                 {gameState.message}
                             </text>
+                            {gameState.bonuses && gameState.bonuses.length > 0 ? (
+                                <hstack gap="small">
+                                    {gameState.bonuses.map((bonus, idx) => (
+                                        <hstack
+                                            key={`bonus-${idx}`}
+                                            padding="xsmall"
+                                            backgroundColor="#FFF8E1"
+                                            cornerRadius="small"
+                                        >
+                                            <text size="xsmall" color="#F57C00" weight="bold">
+                                                {bonus.label} +{bonus.points}
+                                            </text>
+                                        </hstack>
+                                    ))}
+                                </hstack>
+                            ) : null}
                         </vstack>
                     ) : (
                         <text

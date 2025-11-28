@@ -42,5 +42,13 @@ export type AttemptResult = {
   reward?: {
     points: number;
     experience: number;
+    bonuses?: Array<{
+      type: string;
+      points: number;
+      exp: number;
+      label: string;
+    }>;
+    totalPoints?: number;
+    totalExp?: number;
   };
 };

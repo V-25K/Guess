@@ -3,10 +3,11 @@
  * Handles the entire challenge creation flow with form and UI
  */
 
-import { Devvit, useForm, useState, useAsync } from '@devvit/public-api';
-import type { ChallengeService } from '../../../server/services/challenge.service.js';
-import type { UserService } from '../../../server/services/user.service.js';
+import { Devvit, useForm, useState } from '@devvit/public-api';
+import { ChallengeService } from '../../../server/services/challenge.service.js';
+import { UserService } from '../../../server/services/user.service.js';
 import type { Challenge } from '../../../shared/models/challenge.types.js';
+import { formatTimeRemaining } from '../../../shared/utils/date-utils.js';
 
 export interface ChallengeCreationViewProps {
     userId: string;
@@ -18,6 +19,7 @@ export interface ChallengeCreationViewProps {
     userService: UserService;
     onSuccess: (challenge: Challenge) => void;
     onCancel: () => void;
+    onBackToMenu: () => void;
 }
 
 /**
@@ -25,91 +27,82 @@ export interface ChallengeCreationViewProps {
  * Displays creation UI and handles form submission
  */
 export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewProps> = (
-    { userId, username, canCreateChallenge, userLevel, isModerator, challengeService, userService, onSuccess, onCancel },
+    { userId, username, canCreateChallenge, userLevel, isModerator, challengeService, userService, onSuccess, onCancel, onBackToMenu },
     context
 ) => {
     const REQUIRED_LEVEL = 3;
-    const [isCreating, setIsCreating] = useState(false);
+    
+    // State: 'idle' | 'creating' | 'success' | 'error'
+    const [status, setStatus] = useState<string>('idle');
+    const [errorMessage, setErrorMessage] = useState<string>('');
 
-    const [creationData, setCreationData] = useState<{
-        values: any;
-        timestamp: number;
-    } | null>(null);
-
-    useAsync(async () => {
-        if (!creationData) return null;
-
-        const { values } = creationData;
-
+    // Process challenge creation
+    const processCreation = async (values: Record<string, unknown>) => {
         try {
+            // Check rate limit
             const rateLimitCheck = await userService.canCreateChallenge(userId);
             if (!rateLimitCheck.canCreate) {
-                context.ui.showToast('⏳ Please wait before creating another challenge');
-                setIsCreating(false);
-                setCreationData(null);
-                return null;
+                const timeStr = formatTimeRemaining(rateLimitCheck.timeRemaining);
+                throw new Error(`Challenge cooldown active. Try again in ${timeStr}`);
             }
 
+            // Validate images
             const imageUrlArray: string[] = [];
-            if (values.image1) imageUrlArray.push(values.image1);
-            if (values.image2) imageUrlArray.push(values.image2);
-            if (values.image3) imageUrlArray.push(values.image3);
+            if (values.image1) imageUrlArray.push(values.image1 as string);
+            if (values.image2) imageUrlArray.push(values.image2 as string);
+            if (values.image3) imageUrlArray.push(values.image3 as string);
 
             if (imageUrlArray.length < 2 || imageUrlArray.length > 3) {
-                context.ui.showToast('❌ Please upload 2-3 images');
-                setIsCreating(false);
-                setCreationData(null);
-                return null;
+                throw new Error('Please upload 2-3 images');
             }
 
-            // Collect image descriptions (max 100 chars each) - mandatory for uploaded images
+            // Collect and validate image descriptions
             const imageDescriptions: string[] = [];
             if (values.image1) {
-                if (!values.desc1?.trim()) {
-                    context.ui.showToast('❌ Please describe Image 1');
-                    setIsCreating(false);
-                    setCreationData(null);
-                    return null;
+                const desc1 = values.desc1 as string | undefined;
+                if (!desc1?.trim()) {
+                    throw new Error('Please describe Image 1');
                 }
-                imageDescriptions.push(values.desc1.trim().substring(0, 100));
+                imageDescriptions.push(desc1.trim().substring(0, 100));
             }
             if (values.image2) {
-                if (!values.desc2?.trim()) {
-                    context.ui.showToast('❌ Please describe Image 2');
-                    setIsCreating(false);
-                    setCreationData(null);
-                    return null;
+                const desc2 = values.desc2 as string | undefined;
+                if (!desc2?.trim()) {
+                    throw new Error('Please describe Image 2');
                 }
-                imageDescriptions.push(values.desc2.trim().substring(0, 100));
+                imageDescriptions.push(desc2.trim().substring(0, 100));
             }
             if (values.image3) {
-                if (!values.desc3?.trim()) {
-                    context.ui.showToast('❌ Please describe Image 3');
-                    setIsCreating(false);
-                    setCreationData(null);
-                    return null;
+                const desc3 = values.desc3 as string | undefined;
+                if (!desc3?.trim()) {
+                    throw new Error('Please describe Image 3');
                 }
-                imageDescriptions.push(values.desc3.trim().substring(0, 100));
+                imageDescriptions.push(desc3.trim().substring(0, 100));
             }
 
-
-            const tagArray: string[] = values.tag
-                ? (Array.isArray(values.tag) ? values.tag : [values.tag])
+            const tag = values.tag as string | string[] | undefined;
+            const tagArray: string[] = tag
+                ? (Array.isArray(tag) ? tag : [tag])
                 : [];
 
             // Fixed scoring values for attempt-based system
             const maxScore = 30;
             const scoreDeductionPerHint = 2;
 
+            const title = values.title as string;
+            const answer = values.answer as string;
+            const answerExplanation = values.answerExplanation as string | undefined;
+
+            // Create challenge
             const challenge = await challengeService.createChallenge({
                 creator_id: userId,
                 creator_username: username,
-                title: values.title.trim(),
+                title: title.trim(),
                 description: null,
                 image_url: imageUrlArray.join(','),
                 image_descriptions: imageDescriptions,
-                answer_explanation: values.answerExplanation?.trim() || undefined,
-                correct_answer: values.answer.trim(),
+                answer_explanation: answerExplanation?.trim() || undefined,
+                correct_answer: answer.trim(),
                 tags: tagArray,
                 max_score: maxScore,
                 score_deduction_per_hint: scoreDeductionPerHint,
@@ -118,31 +111,24 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
             });
 
             if (challenge) {
-                // Create Reddit post for the challenge (in proper async context)
-                const postId = await challengeService.createRedditPostForChallenge(challenge.id);
+                // Create Reddit post for the challenge
+                await challengeService.createRedditPostForChallenge(challenge.id);
 
-                if (postId) {
-                    context.ui.showToast('✅ Challenge created with post! +5 pts, +5 exp');
-                } else {
-                    context.ui.showToast('✅ Challenge created! +5 pts, +5 exp (post creation pending)');
-                }
-
+                // Call parent's success handler to refresh data in background
                 onSuccess(challenge);
+
+                // Set success status - this will show success screen after form closes
+                setStatus('success');
             } else {
-                context.ui.showToast('❌ Failed to create challenge');
-                setIsCreating(false);
-                setCreationData(null);
+                throw new Error('Failed to create challenge');
             }
         } catch (error) {
-            console.error('Error creating challenge:', error);
-            context.ui.showToast('❌ Error creating challenge');
-            setIsCreating(false);
-            setCreationData(null);
+            const message = error instanceof Error ? error.message : 'Error creating challenge';
+            setErrorMessage(message);
+            setStatus('error');
+            context.ui.showToast(`❌ ${message}`);
         }
-        return null;
-    }, {
-        depends: [creationData]
-    });
+    };
 
     const createForm = useForm(
         {
@@ -229,7 +215,6 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                     required: false,
                     helpText: 'What does this image show? (max 50 chars)',
                 },
-
                 {
                     name: 'answerExplanation',
                     label: 'Answer Explanation *',
@@ -243,31 +228,89 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
         },
         async (values) => {
             if (!values) {
-                console.error('[ChallengeCreationView] No values received from form');
                 context.ui.showToast('❌ Form data missing');
                 return;
             }
-            setIsCreating(true);
-            setCreationData({ values, timestamp: Date.now() });
+
+            await processCreation(values);
         }
     );
 
-    if (isCreating) {
+    // Show success screen after creation
+    if (status === 'success') {
         return (
             <vstack
                 alignment="center middle"
                 padding="medium"
-                gap="medium"
+                gap="large"
                 width="100%"
                 height="100%"
                 backgroundColor="#F6F7F8"
             >
-                <text style="heading" size="xlarge" color="#FF4500">
-                    ✨ Creating Challenge...
-                </text>
-                <text style="body" color="#878a8c" alignment="center">
-                    Please wait while we set up your puzzle.
-                </text>
+                <vstack alignment="center middle" gap="medium">
+                    <text style="heading" size="xxlarge">
+                        ✅
+                    </text>
+                    <text style="heading" size="xlarge" color="#FF4500">
+                        Challenge Created!
+                    </text>
+                    <text style="body" color="#878a8c" alignment="center">
+                        Your challenge has been created successfully.
+                    </text>
+                    <text style="body" color="#878a8c" alignment="center">
+                        You earned +5 points and +5 experience!
+                    </text>
+                </vstack>
+
+                <button
+                    onPress={() => {
+                        setStatus('idle');
+                        onBackToMenu();
+                    }}
+                    appearance="primary"
+                    size="large"
+                    width="80%"
+                >
+                    Back to Menu
+                </button>
+            </vstack>
+        );
+    }
+
+    // Show error screen if creation failed
+    if (status === 'error') {
+        return (
+            <vstack
+                alignment="center middle"
+                padding="medium"
+                gap="large"
+                width="100%"
+                height="100%"
+                backgroundColor="#F6F7F8"
+            >
+                <vstack alignment="center middle" gap="medium">
+                    <text style="heading" size="xxlarge">
+                        ❌
+                    </text>
+                    <text style="heading" size="xlarge" color="#FF4500">
+                        Creation Failed
+                    </text>
+                    <text style="body" color="#878a8c" alignment="center">
+                        {errorMessage || 'Something went wrong. Please try again.'}
+                    </text>
+                </vstack>
+
+                <button
+                    onPress={() => {
+                        setStatus('idle');
+                        setErrorMessage('');
+                    }}
+                    appearance="primary"
+                    size="large"
+                    width="80%"
+                >
+                    Try Again
+                </button>
             </vstack>
         );
     }
@@ -292,13 +335,16 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
 
             <vstack gap="medium" width="80%" alignment="center middle">
                 <button
-                    onPress={() => {
+                    onPress={async () => {
                         if (!isModerator && userLevel < REQUIRED_LEVEL) {
+                            const levelsNeeded = REQUIRED_LEVEL - userLevel;
                             context.ui.showToast(
-                                `Reach level ${REQUIRED_LEVEL} to create challenges (Current: Level ${userLevel})`
+                                `🎯 Reach Level ${REQUIRED_LEVEL} to create challenges! (${levelsNeeded} level${levelsNeeded > 1 ? 's' : ''} to go)`
                             );
                         } else if (!canCreateChallenge) {
-                            context.ui.showToast('Please wait before creating another challenge');
+                            const rateLimitCheck = await userService.canCreateChallenge(userId);
+                            const timeStr = formatTimeRemaining(rateLimitCheck.timeRemaining);
+                            context.ui.showToast(`⏳ Challenge cooldown active. Next creation in ${timeStr}`);
                         } else {
                             context.ui.showForm(createForm);
                         }

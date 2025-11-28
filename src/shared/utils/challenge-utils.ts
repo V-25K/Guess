@@ -4,6 +4,7 @@
  */
 
 import type { Challenge, GameChallenge, ImageItem } from '../models/challenge.types.js';
+import type { ChallengeAttempt } from '../models/attempt.types.js';
 
 /**
  * Parse image URLs from the image_url field
@@ -19,8 +20,8 @@ export function parseImageUrls(imageUrl: string, descriptions?: string[]): Image
 
   return urls.map((url, index) => ({
     url,
-    isRevealed: true, // All images revealed immediately in attempt-based scoring
-    description: descriptions?.[index], // Add description if available
+    isRevealed: true,
+    description: descriptions?.[index],
   }));
 }
 
@@ -30,7 +31,6 @@ export function parseImageUrls(imageUrl: string, descriptions?: string[]): Image
  */
 export function convertToGameChallenges(challenges: Challenge[]): GameChallenge[] {
   return challenges.map((c) => {
-    // Parse image_descriptions if it's a JSON string
     let parsedDescriptions: string[] | undefined;
     if (c.image_descriptions) {
       if (typeof c.image_descriptions === 'string') {
@@ -49,9 +49,44 @@ export function convertToGameChallenges(challenges: Challenge[]): GameChallenge[
     return {
       ...c,
       images: parseImageUrls(c.image_url, parsedDescriptions),
-      keywords: [], // Initialize empty keywords array
-      creator_avatar_url: undefined, // Will be fetched separately
-      image_descriptions: parsedDescriptions, // Use parsed descriptions
+      keywords: [],
+      creator_avatar_url: undefined,
+      image_descriptions: parsedDescriptions,
     };
   });
+}
+
+/**
+ * Filter challenges to show only those available for the user to play
+ * Excludes:
+ * - Challenges created by the user
+ * - Challenges already solved
+ * - Challenges that are game over (10 failed attempts)
+ * 
+ * @param challenges - All challenges
+ * @param userAttempts - User's attempt history
+ * @param userId - Current user ID
+ * @returns Filtered list of available challenges
+ */
+export function filterAvailableChallenges(
+  challenges: GameChallenge[],
+  userAttempts: ChallengeAttempt[],
+  userId: string
+): GameChallenge[] {
+  const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
+
+  const available: GameChallenge[] = [];
+  for (const challenge of challenges) {
+    if (challenge.creator_id === userId) {
+      continue;
+    }
+
+    const attempt = attemptMap.get(challenge.id);
+
+    if (!attempt || (!attempt.is_solved && !attempt.game_over)) {
+      available.push(challenge);
+    }
+  }
+
+  return available;
 }

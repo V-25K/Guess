@@ -65,6 +65,7 @@ export function useNavigation(initialView: ViewType = 'menu'): UseNavigationResu
    * Adds the new view to history and updates current/previous views
    */
   const navigateTo = (view: ViewType): void => {
+    
     // Don't navigate if already on the same view
     if (view === currentView) {
       return;

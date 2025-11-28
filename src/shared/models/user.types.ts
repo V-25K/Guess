@@ -15,6 +15,8 @@ export type UserProfile = {
   challenges_created: number;
   challenges_attempted: number;
   challenges_solved: number;
+  current_streak: number;           // Consecutive solves without failing
+  best_streak: number;              // Highest streak achieved
   last_challenge_created_at: string | null;
   role: UserRole;
   created_at?: string;

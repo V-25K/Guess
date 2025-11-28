@@ -51,33 +51,54 @@ Because exact string matching is dumb. If the answer is "dogs" and someone says 
 
 ## 💰 Scoring System (The Point Grind)
 
-Oh man, I spent way too long balancing this...
+Oh man, I spent way too long balancing this... and then I added BONUSES because why not make it more exciting?
 
-### How Scoring Works:
+### Base Scoring:
 ```typescript
 // From reward-calculator.ts
 function calculateAttemptReward(attemptsMade, isSolved) {
   // Base formula: 28 - ((attempts - 1) × 2)
-  let points = 28 - ((attemptsMade - 1) * 2);
-  
-  // Bonuses for being smart on first tries
-  if (attemptsMade === 1) points += 2;  // Total: 30 points
-  if (attemptsMade === 2) points += 1;  // Total: 27 points
-  
+  const points = 28 - ((attemptsMade - 1) * 2);
   return { points, exp: points };  // 1:1 ratio, exp = points
 }
 ```
 
-**Translation for drunk future me:**
-- 1st attempt correct: **30 points** (you're a genius)
-- 2nd attempt: **27 points** (still pretty good)
-- 3rd attempt: **24 points** (meh)
-- 4th: **22**, 5th: **20**, etc...
-- 10th attempt: **10 points** (you barely made it buddy)
+**Base points (before bonuses):**
+- 1st attempt: **28 points**
+- 2nd attempt: **26 points**
+- 3rd attempt: **24 points**
+- 5th attempt: **20 points**
+- 10th attempt: **10 points**
 - Failed all 10: **0 points** (sad trombone)
 
+### 🎁 THE BONUS SYSTEM (November 2025 Addition)
+
+Because base points weren't exciting enough, I added special bonuses:
+
+| Bonus | Points | When It Triggers |
+|-------|--------|------------------|
+| 🎉 **First Clear!** | +50 | Your FIRST EVER challenge solve |
+| ✨ **Perfect!** | +20 | Solved on 1st attempt |
+| ⚡ **Speed Demon!** | +5 | Solved on 2nd or 3rd attempt |
+| 👑 **Comeback King!** | +3 | Clutch solve on 10th attempt |
+| 🔥 **Streak!** | +3 | Consecutive solves without failing |
+| 🎨 **Creator Bonus!** | +2 | Someone solves YOUR challenge |
+
+**Why these numbers?**
+- **First Clear (+50)**: Welcome to the game! Big dopamine hit to hook new players
+- **Perfect (+20)**: You're a genius, here's a fat bonus
+- **Speed Demon (+5)**: Not perfect but still quick, small reward
+- **Comeback King (+3)**: Clutch plays deserve recognition even if score is low
+- **Streak (+3)**: Encourages consistent play, resets on game over
+- **Creator Bonus (+2)**: Rewards good puzzle design
+
+**Example scenarios:**
+- First ever challenge, perfect solve: 28 + 50 + 20 = **98 points** 🤯
+- Regular perfect solve with streak: 28 + 20 + 3 = **51 points**
+- Clutch 10th attempt save: 10 + 3 = **13 points** (better than 0!)
+
 **Why this formula?**
-I wanted to reward quick thinking but not punish people too hard for 2-3 attempts. The bonuses on attempts 1-2 make first-guess players feel special.
+I wanted to reward quick thinking but not punish people too hard for 2-3 attempts. The bonuses make special moments feel SPECIAL.
 
 ---
 
@@ -249,6 +270,8 @@ Calculates and displays rewards. Shows the "You earned X points!" animations.
   level: NUMBER
   challenges_solved: NUMBER
   challenges_created: NUMBER
+  current_streak: NUMBER (consecutive solves, resets on game over)
+  best_streak: NUMBER (highest streak ever achieved)
   last_challenge_created_at: TIMESTAMP
 }
 ```
@@ -507,11 +530,60 @@ Networks are unreliable. Databases hiccup. APIs timeout. Retry with exponential 
    - "Solved 100 challenges"
    - "Created 10 challenges"
    - "On a 7-day streak"
+   - ✅ PARTIALLY DONE: Streak tracking is now implemented! (current_streak, best_streak)
 
 6. **Power-ups** (inspired by the StackIt conversation)
    - Reveal answer length
    - Remove wrong letter options
    - Get AI hint for free
+
+---
+
+## 🔧 Recent Optimizations (November 2025)
+
+Hey, it's me again. Did a full codebase review and made some improvements:
+
+### 1. **Production Configuration**
+- Updated rate limiting from 1-minute test mode to **24-hour production mode**
+- This is in `date-utils.ts` - don't forget it's 24 hours now!
+
+### 2. **Code Deduplication**
+Created `filterAvailableChallenges()` utility function in `challenge-utils.ts`:
+```typescript
+export function filterAvailableChallenges(
+  challenges: GameChallenge[],
+  userAttempts: ChallengeAttempt[],
+  userId: string
+): GameChallenge[]
+```
+
+**Why?** This logic was duplicated in 3 places in `main.tsx`. Now it's in one place. DRY principle FTW.
+
+**What it does:**
+- Filters out challenges created by the user
+- Filters out solved challenges  
+- Filters out game-over challenges (10 failed attempts)
+- Uses a Map for O(1) lookup instead of O(n) for each challenge
+
+### 3. **Architecture Verified**
+- All 76 TypeScript files reviewed
+- Service layer → Repository layer → Database flow is solid
+- No circular dependencies
+- Error handling is consistent
+- Caching strategy is working well
+
+### 4. **What's Already Good**
+- No debug `console.log` statements (only `console.error` for production logging)
+- TypeScript types are comprehensive
+- Comments are meaningful (not redundant)
+- Retry logic with exponential backoff
+- Request deduplication for simultaneous requests
+- Atomic database operations
+
+### 5. **Performance Notes**
+The batch fetching optimization (`getUserAttempts` once instead of N+1 queries) is CRITICAL. Don't remove it. It turns:
+- ❌ 100 challenges = 100 database queries
+- ✅ 100 challenges = 1 database query
 
 ---
 
@@ -540,3 +612,15 @@ P.S. - The reason `calculateLevel()` uses a while loop instead of a formula is b
 P.P.S - If the AI starts accepting obviously wrong answers, check the prompt in `ai-validation.service.ts`. You probably need to be more specific about what "CORRECT" means.
 
 P.P.P.S - Remember: `exp = points` (1:1 ratio). Don't overcomplicate it.
+
+P.P.P.P.S - (November 2025) Rate limiting is now 24 hours. The `filterAvailableChallenges` utility is your friend. The architecture is solid. Ship it.
+
+P.P.P.P.P.S - (November 2025, later that night) Added a whole BONUS SYSTEM because base points felt boring:
+- 🎉 First Clear (+50) - welcome bonus for new players
+- ✨ Perfect (+20) - 1st attempt solves
+- ⚡ Speed Demon (+5) - 2nd-3rd attempt solves
+- 👑 Comeback King (+3) - clutch 10th attempt saves
+- 🔥 Streak (+3) - consecutive solves without failing
+- 🎨 Creator Bonus (+2) - when someone solves YOUR puzzle
+
+Also added streak tracking to user profiles (current_streak, best_streak). Don't forget to add those columns to Supabase if you haven't already. The profile page now shows your streak stats. Players are gonna LOVE chasing streaks. Trust me. 🔥

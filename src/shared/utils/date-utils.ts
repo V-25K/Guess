@@ -6,11 +6,9 @@
 
 /**
  * Rate limit duration in milliseconds
- * TODO: Change back to 24 hours for production (24 * 60 * 60 * 1000)
- * Currently set to 1 minute for testing
+ * Users can create one challenge per 24 hours
  */
-export const RATE_LIMIT_DURATION_MS = 1 * 60 * 1000; // 1 minute for testing
-// export const RATE_LIMIT_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours for production
+export const RATE_LIMIT_DURATION_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Result of checking if a user can create a challenge
@@ -48,23 +46,23 @@ export function canCreateChallenge(
       timeRemaining: 0,
     };
   }
-  
+
   const now = Date.now();
-  const lastCreatedTime = typeof lastCreatedAt === 'string' 
-    ? new Date(lastCreatedAt).getTime() 
+  const lastCreatedTime = typeof lastCreatedAt === 'string'
+    ? new Date(lastCreatedAt).getTime()
     : lastCreatedAt.getTime();
-  
+
   const timeSinceLastCreation = now - lastCreatedTime;
-  
+
   if (timeSinceLastCreation >= RATE_LIMIT_DURATION_MS) {
     return {
       canCreate: true,
       timeRemaining: 0,
     };
   }
-  
+
   const timeRemaining = RATE_LIMIT_DURATION_MS - timeSinceLastCreation;
-  
+
   return {
     canCreate: false,
     timeRemaining: Math.max(0, timeRemaining),
@@ -103,26 +101,26 @@ export function formatTimeRemaining(milliseconds: number): string {
   if (milliseconds <= 0) {
     return '0m';
   }
-  
+
   const totalSeconds = Math.floor(milliseconds / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  
+
   const parts: string[] = [];
-  
+
   if (hours > 0) {
     parts.push(`${hours}h`);
   }
-  
+
   if (minutes > 0) {
     parts.push(`${minutes}m`);
   }
-  
+
   if (hours === 0 && seconds > 0) {
     parts.push(`${seconds}s`);
   }
-  
+
   return parts.join(' ') || '0m';
 }
 
@@ -139,27 +137,27 @@ export function formatTimeRemaining(milliseconds: number): string {
  */
 export function formatRelativeTime(timestamp: string | Date): string {
   const now = Date.now();
-  const time = typeof timestamp === 'string' 
-    ? new Date(timestamp).getTime() 
+  const time = typeof timestamp === 'string'
+    ? new Date(timestamp).getTime()
     : timestamp.getTime();
-  
+
   const diffMs = now - time;
   const diffSeconds = Math.floor(diffMs / 1000);
   const diffMinutes = Math.floor(diffSeconds / 60);
   const diffHours = Math.floor(diffMinutes / 60);
   const diffDays = Math.floor(diffHours / 24);
-  
+
   if (diffDays > 0) {
     return diffDays === 1 ? '1 day ago' : `${diffDays} days ago`;
   }
-  
+
   if (diffHours > 0) {
     return diffHours === 1 ? '1 hour ago' : `${diffHours} hours ago`;
   }
-  
+
   if (diffMinutes > 0) {
     return diffMinutes === 1 ? '1 minute ago' : `${diffMinutes} minutes ago`;
   }
-  
+
   return 'just now';
 }

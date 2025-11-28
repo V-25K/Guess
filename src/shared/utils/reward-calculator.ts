@@ -4,8 +4,64 @@
  * Handles calculation of points and experience rewards for various game actions.
  */
 
-import type { Reward } from '../models/common.types.js';
-import { REWARDS } from '../constants/rewards.js';
+import type { Reward, Bonus, BonusType, RewardWithBonuses } from '../models/common.types.js';
+import { REWARDS, BONUSES } from '../constants/rewards.js';
+
+/**
+ * Context for calculating bonuses
+ */
+export type BonusContext = {
+  isFirstClear: boolean;      // User's first ever challenge solve
+  currentStreak: number;      // Current consecutive solves (before this one)
+  attemptsMade: number;       // Number of attempts used
+};
+
+/**
+ * Create a bonus object from a bonus type
+ */
+function createBonus(type: BonusType): Bonus {
+  const bonusData = BONUSES[type];
+  return {
+    type,
+    points: bonusData.points,
+    exp: bonusData.exp,
+    label: bonusData.label,
+  };
+}
+
+/**
+ * Calculate all applicable bonuses for a challenge completion
+ */
+export function calculateBonuses(context: BonusContext): Bonus[] {
+  const bonuses: Bonus[] = [];
+
+  // First Clear Bonus - first challenge ever solved
+  if (context.isFirstClear) {
+    bonuses.push(createBonus('first_clear'));
+  }
+
+  // Perfect Solve Bonus - solved on first attempt
+  if (context.attemptsMade === 1) {
+    bonuses.push(createBonus('perfect_solve'));
+  }
+
+  // Speed Demon Bonus - solved within 3 attempts (but not first, to avoid double bonus)
+  if (context.attemptsMade >= 2 && context.attemptsMade <= 3) {
+    bonuses.push(createBonus('speed_demon'));
+  }
+
+  // Comeback King Bonus - solved on last attempt
+  if (context.attemptsMade === 10) {
+    bonuses.push(createBonus('comeback_king'));
+  }
+
+  // Streak Bonus - consecutive solves (awarded if streak > 0 before this solve)
+  if (context.currentStreak > 0) {
+    bonuses.push(createBonus('streak'));
+  }
+
+  return bonuses;
+}
 
 /**
  * Calculate the reward for completing a challenge based on performance.
@@ -68,9 +124,16 @@ export function getCommentReward(): Reward {
 }
 
 /**
+ * Get the creator bonus when someone solves their challenge
+ */
+export function getCreatorBonus(): Bonus {
+  return createBonus('creator_bonus');
+}
+
+/**
  * Calculate the reward for completing a challenge based on attempt count.
- * Formula: Score = 28 - ((attempts - 1) × 2) + bonus
- * Bonus: +2 for attempt 1, +1 for attempt 2, 0 otherwise
+ * Formula: Score = 28 - ((attempts - 1) × 2)
+ * No built-in bonus - bonuses are calculated separately via calculateBonuses()
  */
 export function calculateAttemptReward(
   attemptsMade: number,
@@ -85,18 +148,43 @@ export function calculateAttemptReward(
   }
   
   // Base calculation: 28 - ((attempts - 1) × 2)
-  let points = 28 - ((attemptsMade - 1) * 2);
-  
-  // Add bonuses for first two attempts
-  if (attemptsMade === 1) {
-    points += 2; // 30 points total
-  } else if (attemptsMade === 2) {
-    points += 1; // 27 points total
-  }
-  
+  const points = 28 - ((attemptsMade - 1) * 2);
   const exp = points; // 1:1 ratio
   
   return { points, exp };
+}
+
+/**
+ * Calculate full reward with bonuses for a challenge completion
+ */
+export function calculateAttemptRewardWithBonuses(
+  attemptsMade: number,
+  isSolved: boolean,
+  bonusContext: BonusContext
+): RewardWithBonuses {
+  const baseReward = calculateAttemptReward(attemptsMade, isSolved);
+  
+  if (!isSolved) {
+    return {
+      ...baseReward,
+      bonuses: [],
+      totalPoints: 0,
+      totalExp: 0,
+    };
+  }
+
+  const bonuses = calculateBonuses(bonusContext);
+  
+  const bonusPoints = bonuses.reduce((sum, b) => sum + b.points, 0);
+  const bonusExp = bonuses.reduce((sum, b) => sum + b.exp, 0);
+
+  return {
+    points: baseReward.points,
+    exp: baseReward.exp,
+    bonuses,
+    totalPoints: baseReward.points + bonusPoints,
+    totalExp: baseReward.exp + bonusExp,
+  };
 }
 
 /**

@@ -121,6 +121,8 @@ export class UserService extends BaseService {
           challenges_created: 0,
           challenges_attempted: 0,
           challenges_solved: 0,
+          current_streak: 0,
+          best_streak: 0,
           last_challenge_created_at: null,
           role: 'player',
         };
@@ -393,5 +395,68 @@ export class UserService extends BaseService {
       size: 0,
       ttl: this.PROFILE_CACHE_TTL,
     };
+  }
+
+  /**
+   * Increment user's streak on successful solve
+   * Returns the new streak value
+   */
+  async incrementStreak(userId: string): Promise<number> {
+    try {
+      const profile = await this.userRepo.findById(userId);
+      if (!profile) {
+        return 0;
+      }
+
+      const newStreak = (profile.current_streak || 0) + 1;
+      const bestStreak = Math.max(profile.best_streak || 0, newStreak);
+
+      await this.userRepo.updateProfile(userId, {
+        current_streak: newStreak,
+        best_streak: bestStreak,
+      });
+
+      this.invalidateUserCache(userId);
+      this.logInfo('UserService', `User ${userId} streak increased to ${newStreak}`);
+
+      return newStreak;
+    } catch (error) {
+      this.logError('UserService.incrementStreak', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Reset user's streak on game over (failed challenge)
+   */
+  async resetStreak(userId: string): Promise<void> {
+    try {
+      const profile = await this.userRepo.findById(userId);
+      if (!profile || (profile.current_streak || 0) === 0) {
+        return;
+      }
+
+      await this.userRepo.updateProfile(userId, {
+        current_streak: 0,
+      });
+
+      this.invalidateUserCache(userId);
+      this.logInfo('UserService', `User ${userId} streak reset`);
+    } catch (error) {
+      this.logError('UserService.resetStreak', error);
+    }
+  }
+
+  /**
+   * Get user's current streak
+   */
+  async getCurrentStreak(userId: string): Promise<number> {
+    try {
+      const profile = await this.userRepo.findById(userId);
+      return profile?.current_streak || 0;
+    } catch (error) {
+      this.logError('UserService.getCurrentStreak', error);
+      return 0;
+    }
   }
 }

@@ -140,6 +140,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     const [challengesLoaded, setChallengesLoaded] = useState(false);
 
     const [canCreateChallenge, setCanCreateChallenge] = useState(true);
+    const [rateLimitTimeRemaining, setRateLimitTimeRemaining] = useState(0);
     const [isMember, setIsMember] = useState(false);
 
     const { data: subredditName } = useAsync(async () => {
@@ -184,6 +185,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
 
             const rateLimitCheck = await services.userService.canCreateChallenge(userId);
             setCanCreateChallenge(rateLimitCheck.canCreate);
+            setRateLimitTimeRemaining(rateLimitCheck.timeRemaining);
 
             const dbChallenges = await services.challengeService.getChallenges();
             const gameChallenges = convertToGameChallenges(dbChallenges);
@@ -352,9 +354,27 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     };
 
     const handleChallengeCreated = async (createdChallenge: any) => {
+        
+        // Refresh data in the background while success screen is shown
         try {
+            // Refresh all challenges from database
             const dbChallenges = await services.challengeService.getChallenges();
             const gameChallenges = convertToGameChallenges(dbChallenges);
+            
+            // Fetch avatars for new challenges
+            await Promise.all(
+                gameChallenges.map(async (challenge) => {
+                    try {
+                        const avatarUrl = await fetchAvatarUrl(context, challenge.creator_username);
+                        if (avatarUrl) {
+                            challenge.creator_avatar_url = avatarUrl;
+                        }
+                    } catch (error) {
+                        console.error('[Main] Error fetching avatar:', error);
+                    }
+                })
+            );
+            
             setChallenges(gameChallenges);
 
             // Refresh available challenges (exclude own challenges)
@@ -378,22 +398,13 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             }
             setAvailableChallenges(available);
 
+            // Update rate limit status
             const newRateLimitCheck = await services.userService.canCreateChallenge(userId);
             setCanCreateChallenge(newRateLimitCheck.canCreate);
+            setRateLimitTimeRemaining(newRateLimitCheck.timeRemaining);
 
-            // Find the newly created challenge and navigate to it
-            const newChallengeIndex = gameChallenges.findIndex(c => c.id === createdChallenge.id);
-            if (newChallengeIndex !== -1) {
-                setCurrentChallengeIndex(newChallengeIndex);
-                setIsViewingSpecificChallenge(true);
-                navigateTo('gameplay');
-            } else {
-                navigateTo('menu');
-            }
         } catch (error) {
-            console.error('[Main] Error in handleChallengeCreated:', error);
-            context.ui.showToast('⚠️ Error refreshing challenges');
-            navigateTo('menu');
+            console.error('[Main] Error refreshing data after challenge creation:', error);
         }
     };
 
@@ -408,6 +419,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             userService: services.userService,
             onSuccess: handleChallengeCreated,
             onCancel: () => navigateTo('menu'),
+            onBackToMenu: () => navigateTo('menu'),
         };
         return <ChallengeCreationView {...createProps as ChallengeCreationViewProps} />;
     };
@@ -419,6 +431,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     if (currentView === 'menu') {
         const menuProps = {
             canCreateChallenge,
+            rateLimitTimeRemaining,
             challengesCount: challenges.length,
             isMember,
             userLevel,
@@ -430,10 +443,12 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     }
 
     if (currentView === 'gameplay') {
+        
         // If viewing a specific challenge, always show it (even if completed)
         if (isViewingSpecificChallenge) {
             // Safety check: ensure challenge exists
             if (!currentChallenge) {
+                console.warn('[Main] No current challenge found in gameplay view');
                 return (
                     <AllCaughtUpView
                         onBackToMenu={() => {

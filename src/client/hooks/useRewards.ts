@@ -11,6 +11,13 @@
 
 import { useState } from '@devvit/public-api';
 
+export type BonusInfo = {
+  type: string;
+  points: number;
+  exp: number;
+  label: string;
+};
+
 export type Reward = {
   id: string;
   type: 'points' | 'experience' | 'level_up' | 'challenge_created' | 'challenge_solved' | 'comment';
@@ -19,6 +26,9 @@ export type Reward = {
   level: number;
   message: string;
   timestamp: number;
+  bonuses?: BonusInfo[];
+  totalPoints?: number;
+  totalExp?: number;
 };
 
 export interface UseRewardsResult {
@@ -141,11 +151,16 @@ export function createRewardMessage(
   type: Reward['type'],
   points?: number,
   experience?: number,
-  level?: number
+  level?: number,
+  bonuses?: BonusInfo[]
 ): string {
+  const bonusLabels = bonuses && bonuses.length > 0 
+    ? ' ' + bonuses.map(b => b.label).join(' ')
+    : '';
+
   switch (type) {
     case 'challenge_solved':
-      return `Challenge solved! +${points || 0} points, +${experience || 0} exp`;
+      return `Challenge solved! +${points || 0} points, +${experience || 0} exp${bonusLabels}`;
     
     case 'challenge_created':
       return `Challenge created! +${points || 0} points, +${experience || 0} exp`;

@@ -9,8 +9,9 @@ import { AttemptRepository } from '../repositories/attempt.repository.js';
 import { ChallengeRepository } from '../repositories/challenge.repository.js';
 import { UserService } from './user.service.js';
 import { AIValidationService } from './ai-validation.service.js';
-import { calculateAttemptReward, calculatePotentialScore } from '../../shared/utils/reward-calculator.js';
+import { calculateAttemptRewardWithBonuses, calculatePotentialScore, getCreatorBonus } from '../../shared/utils/reward-calculator.js';
 import type { ChallengeAttempt, ChallengeAttemptCreate, AttemptResult } from '../../shared/models/attempt.types.js';
+import type { Bonus } from '../../shared/models/common.types.js';
 
 export class AttemptService extends BaseService {
   private aiValidationService: AIValidationService;
@@ -187,17 +188,47 @@ export class AttemptService extends BaseService {
       });
 
       if (validation.isCorrect) {
-        // Calculate reward based on attempts
-        const reward = calculateAttemptReward(newAttemptCount, true);
+        // Get user profile for bonus context
+        const userProfile = await this.userService.getUserProfile(userId);
+        const isFirstClear = userProfile ? userProfile.challenges_solved === 0 : false;
+        const currentStreak = userProfile?.current_streak || 0;
 
-        // Record completion
+        // Calculate reward with bonuses
+        const rewardWithBonuses = calculateAttemptRewardWithBonuses(
+          newAttemptCount,
+          true,
+          {
+            isFirstClear,
+            currentStreak,
+            attemptsMade: newAttemptCount,
+          }
+        );
+
+        // Record completion with total points (base + bonuses)
         await this.recordCompletion(
           userId,
           challengeId,
           newAttemptCount,
-          reward.points,
-          reward.exp
+          rewardWithBonuses.totalPoints,
+          rewardWithBonuses.totalExp
         );
+
+        // Increment user's streak
+        await this.userService.incrementStreak(userId);
+
+        // Award creator bonus if solver is not the creator
+        if (challenge.creator_id && challenge.creator_id !== userId) {
+          const creatorBonus = getCreatorBonus();
+          await this.userService.awardPoints(
+            challenge.creator_id,
+            creatorBonus.points,
+            creatorBonus.exp
+          );
+          this.logInfo(
+            'AttemptService',
+            `Awarded creator bonus to ${challenge.creator_id} for challenge ${challengeId}`
+          );
+        }
 
         return {
           isCorrect: true,
@@ -206,8 +237,11 @@ export class AttemptService extends BaseService {
           potentialScore: 0,
           gameOver: true,
           reward: {
-            points: reward.points,
-            experience: reward.exp,
+            points: rewardWithBonuses.points,
+            experience: rewardWithBonuses.exp,
+            bonuses: rewardWithBonuses.bonuses,
+            totalPoints: rewardWithBonuses.totalPoints,
+            totalExp: rewardWithBonuses.totalExp,
           },
         };
       }
@@ -217,6 +251,9 @@ export class AttemptService extends BaseService {
         await this.attemptRepo.updateAttempt(attempt.id, {
           game_over: true,
         });
+
+        // Reset user's streak on game over
+        await this.userService.resetStreak(userId);
 
         return {
           isCorrect: false,

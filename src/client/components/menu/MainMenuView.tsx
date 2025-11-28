@@ -5,9 +5,11 @@
 
 import { Devvit } from '@devvit/public-api';
 import type { ViewType } from '../../hooks/useNavigation.js';
+import { formatTimeRemaining } from '../../../shared/utils/date-utils.js';
 
 export interface MainMenuViewProps {
   canCreateChallenge: boolean;
+  rateLimitTimeRemaining?: number;
   challengesCount?: number;
   isMember: boolean;
   userLevel: number;
@@ -21,7 +23,7 @@ export interface MainMenuViewProps {
  * Central hub for navigating to different parts of the app
  */
 export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = (
-  { canCreateChallenge, challengesCount = 0, isMember, userLevel, isModerator, onNavigate, onSubscribe },
+  { canCreateChallenge, rateLimitTimeRemaining = 0, challengesCount = 0, isMember, userLevel, isModerator, onNavigate, onSubscribe },
   context
 ) => {
   const REQUIRED_LEVEL = 3;
@@ -81,31 +83,29 @@ export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = (
 
         <button
           onPress={() => {
-            
-            // First check: Is user a moderator? If yes, allow creation (subject to rate limit)
+
+            // Moderators bypass all restrictions
             if (isModerator === true) {
-              if (!canCreateChallenge) {
-                context.ui.showToast('Please wait before creating another challenge');
-              } else {
-                onNavigate('create');
-              }
+              onNavigate('create');
               return;
             }
-            
-            // Second check: Is user level high enough?
+
+            // Check: Is user level high enough?
             if (userLevel < REQUIRED_LEVEL) {
+              const levelsNeeded = REQUIRED_LEVEL - userLevel;
               context.ui.showToast(
-                `Reach level ${REQUIRED_LEVEL} to create challenges (Current: Level ${userLevel})`
+                `🎯 Reach Level ${REQUIRED_LEVEL} to create challenges! (${levelsNeeded} level${levelsNeeded > 1 ? 's' : ''} to go)`
               );
               return;
             }
-            
-            // Third check: Rate limit
+
+            // Check: Rate limit (24-hour cooldown)
             if (!canCreateChallenge) {
-              context.ui.showToast('Please wait before creating another challenge');
+              const timeStr = formatTimeRemaining(rateLimitTimeRemaining);
+              context.ui.showToast(`⏳ Challenge cooldown active. Next creation in ${timeStr}`);
               return;
             }
-            
+
             // All checks passed
             onNavigate('create');
           }}
@@ -124,7 +124,7 @@ export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = (
         >
           Play
         </button>
-        
+
         {challengesCount === 0 && (
           <text size="xsmall" color="#FF4500" alignment="center">
             ⚠️ No challenges available. Create one first!

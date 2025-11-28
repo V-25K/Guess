@@ -18,25 +18,46 @@ Guess The Link is an interactive puzzle game where players are presented with mu
 
 ### Scoring System
 
-- **Maximum Score**: 30 points (correct on 1st attempt)
-- **Minimum Score**: 10 points (correct on 10th attempt)
-- **Deduction**: 2 points per attempt (after bonuses)
+- **Maximum Base Score**: 28 points (correct on 1st attempt)
+- **Minimum Base Score**: 10 points (correct on 10th attempt)
+- **Deduction**: 2 points per attempt
 - **Attempt Limit**: 10 attempts maximum per challenge
 - **Experience**: Points earned = Experience gained (1:1 ratio)
 
-**Scoring Formula:**
-- Base Score: 28 points
-- Deduction: (attempts - 1) × 2 points
-- Bonus: +2 points for 1st attempt, +1 point for 2nd attempt
+**Base Scoring Formula:**
+- Base Score: 28 - ((attempts - 1) × 2) points
 
-**Example Scoring:**
-- 1st attempt (correct): 30 points + 30 exp (28 - 0 + 2 bonus)
-- 2nd attempt (correct): 27 points + 27 exp (28 - 2 + 1 bonus)
-- 3rd attempt (correct): 24 points + 24 exp (28 - 4)
-- 4th attempt (correct): 22 points + 22 exp (28 - 6)
-- 5th attempt (correct): 20 points + 20 exp (28 - 8)
-- 10th attempt (correct): 10 points + 10 exp (28 - 18)
+**Example Base Scoring:**
+- 1st attempt: 28 points + 28 exp
+- 2nd attempt: 26 points + 26 exp
+- 3rd attempt: 24 points + 24 exp
+- 5th attempt: 20 points + 20 exp
+- 10th attempt: 10 points + 10 exp
 - Failed (10 incorrect): 0 points + 0 exp
+
+### Bonus System 🎁
+
+On top of base rewards, players can earn special bonuses:
+
+| Bonus | Points/Exp | Trigger |
+|-------|------------|---------|
+| 🎉 **First Clear!** | +50 | Solving your very first challenge ever |
+| ✨ **Perfect!** | +20 | Solving on the 1st attempt |
+| ⚡ **Speed Demon!** | +5 | Solving within attempts 2-3 |
+| 👑 **Comeback King!** | +3 | Clutch solve on the 10th (last) attempt |
+| 🔥 **Streak Bonus!** | +3 | Consecutive solves without failing |
+| 🎨 **Creator Bonus!** | +2 | Someone else solves your challenge |
+
+**Example with Bonuses:**
+- First ever challenge, solved on 1st attempt: 28 + 50 (first clear) + 20 (perfect) = **98 points!**
+- 2nd challenge, solved on 1st attempt with streak: 28 + 20 (perfect) + 3 (streak) = **51 points**
+- Clutch 10th attempt solve: 10 + 3 (comeback king) = **13 points**
+
+### Streak System 🔥
+
+- Your streak increases each time you solve a challenge
+- Failing a challenge (using all 10 attempts without solving) resets your streak to 0
+- Your current streak and best streak are tracked on your profile
 
 ### AI Answer Validation
 
@@ -51,14 +72,16 @@ The game uses Google Gemini AI to validate answers with intelligent matching:
 ### Points & Experience
 
 **Points** are earned from:
-- Solving challenges (10-30 points based on attempts needed)
+- Solving challenges (10-28 base points + bonuses)
 - Creating challenges (+5 points)
 - Receiving comments on your challenges (+1 point per comment)
+- Bonus rewards (First Clear, Perfect, Streak, etc.)
 
 **Experience (EXP)** is gained at a 1:1 ratio with points:
-- Solving challenges (10-30 exp based on attempts needed)
+- Solving challenges (10-28 base exp + bonuses)
 - Creating challenges (+5 exp)
 - Receiving comments on your challenges (+1 exp per comment)
+- Bonus rewards (First Clear, Perfect, Streak, etc.)
 
 ### Leveling Up
 
@@ -202,30 +225,32 @@ src/
 ### Reward Calculation
 
 ```typescript
-// Calculate points based on attempts made
+// Calculate base points based on attempts made
 function calculateAttemptReward(attemptsMade: number, isSolved: boolean): Reward {
   if (!isSolved) return { points: 0, exp: 0 };
   
   // Base calculation: 28 - ((attempts - 1) × 2)
-  let points = 28 - ((attemptsMade - 1) * 2);
-  
-  // Add bonuses for first two attempts
-  if (attemptsMade === 1) {
-    points += 2; // 30 points total
-  } else if (attemptsMade === 2) {
-    points += 1; // 27 points total
-  }
-  
+  const points = 28 - ((attemptsMade - 1) * 2);
   const exp = points; // 1:1 ratio
   return { points, exp };
 }
 
-// Examples:
-// 1st attempt: 30 points, 30 exp
-// 2nd attempt: 27 points, 27 exp
-// 3rd attempt: 24 points, 24 exp
-// 5th attempt: 20 points, 20 exp
-// 10th attempt: 10 points, 10 exp
+// Calculate bonuses based on context
+function calculateBonuses(context: BonusContext): Bonus[] {
+  const bonuses = [];
+  if (context.isFirstClear) bonuses.push({ type: 'first_clear', points: 50 });
+  if (context.attemptsMade === 1) bonuses.push({ type: 'perfect_solve', points: 20 });
+  if (context.attemptsMade >= 2 && context.attemptsMade <= 3) bonuses.push({ type: 'speed_demon', points: 5 });
+  if (context.attemptsMade === 10) bonuses.push({ type: 'comeback_king', points: 3 });
+  if (context.currentStreak > 0) bonuses.push({ type: 'streak', points: 3 });
+  return bonuses;
+}
+
+// Base Examples:
+// 1st attempt: 28 points + bonuses
+// 2nd attempt: 26 points + bonuses
+// 3rd attempt: 24 points + bonuses
+// 10th attempt: 10 points + bonuses
 // Failed (10 incorrect): 0 points, 0 exp
 ```
 
@@ -257,6 +282,8 @@ function getExpForLevel(level: number): number {
   level: number
   challenges_solved: number
   challenges_created: number
+  current_streak: number        // Consecutive solves without failing
+  best_streak: number           // Highest streak achieved
   last_challenge_created_at: timestamp
 }
 ```
@@ -292,6 +319,51 @@ function getExpForLevel(level: number): number {
   completed_at: timestamp
 }
 ```
+
+## Deployment
+
+### Prerequisites
+- Reddit account with developer access
+- Supabase project with PostgreSQL database
+- Google Gemini API key
+
+### Configuration
+Set the following in Devvit app settings:
+- `SUPABASE_URL`: Your Supabase project URL
+- `SUPABASE_ANON_KEY`: Your Supabase anonymous key
+- `GEMINI_API_KEY`: Your Google Gemini API key
+
+### Deployment Commands
+```bash
+# Login to Devvit
+npm run login
+
+# Test locally
+npm run dev
+
+# Upload to Reddit
+npm run deploy
+
+# Publish to production
+npm run launch
+```
+
+### Production Checklist
+- ✅ Rate limiting set to 24 hours (production mode)
+- ✅ All API keys configured
+- ✅ Database schema deployed
+- ✅ Error handling tested
+- ✅ Caching verified
+- ✅ AI fallback tested
+
+## Performance Optimizations
+
+The codebase includes several key optimizations:
+
+1. **Batch Fetching**: User attempts are fetched once per operation instead of N+1 queries
+2. **Redis Caching**: User profiles (5min), leaderboard (60s), feed (30s), AI validations (indefinite)
+3. **Request Deduplication**: Simultaneous requests for the same data share results
+4. **Atomic Operations**: Database updates use atomic functions to prevent race conditions
 
 ## License
 

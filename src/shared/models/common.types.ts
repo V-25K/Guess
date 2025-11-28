@@ -47,6 +47,27 @@ export type Reward = {
   exp: number;
 };
 
+export type BonusType = 
+  | 'first_clear'      // First challenge ever solved
+  | 'perfect_solve'    // Solved on first attempt
+  | 'speed_demon'      // Solved within 3 attempts
+  | 'comeback_king'    // Solved on last attempt (10th)
+  | 'streak'           // Consecutive solves without failing
+  | 'creator_bonus';   // Someone solved your challenge
+
+export type Bonus = {
+  type: BonusType;
+  points: number;
+  exp: number;
+  label: string;
+};
+
+export type RewardWithBonuses = Reward & {
+  bonuses: Bonus[];
+  totalPoints: number;
+  totalExp: number;
+};
+
 export type RateLimitCheck = {
   canCreate: boolean;
   timeRemaining: number;

@@ -215,6 +215,41 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
         </vstack>
       </hstack>
 
+      {/* Streak Stats Row */}
+      <hstack gap="small" width="100%">
+        {/* Current Streak */}
+        <vstack
+          grow
+          padding="medium"
+          gap="small"
+          backgroundColor={profile.current_streak > 0 ? "#FFF8E1" : "#FFFFFF"}
+          cornerRadius="medium"
+          alignment="center middle"
+        >
+          <text size="large">🔥</text>
+          <text size="xxlarge" weight="bold" color={profile.current_streak > 0 ? "#F57C00" : "#1c1c1c"}>
+            {profile.current_streak || 0}
+          </text>
+          <text size="small" color="#878a8c">Current Streak</text>
+        </vstack>
+
+        {/* Best Streak */}
+        <vstack
+          grow
+          padding="medium"
+          gap="small"
+          backgroundColor="#FFFFFF"
+          cornerRadius="medium"
+          alignment="center middle"
+        >
+          <text size="large">⭐</text>
+          <text size="xxlarge" weight="bold" color="#1c1c1c">
+            {profile.best_streak || 0}
+          </text>
+          <text size="small" color="#878a8c">Best Streak</text>
+        </vstack>
+      </hstack>
+
       {/* Total Attempted - Full Width */}
       <vstack
         padding="medium"

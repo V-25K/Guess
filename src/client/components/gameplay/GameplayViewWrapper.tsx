@@ -53,6 +53,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     isCorrect: boolean;
     playersCompleted: number;
     uniquePlayerCount: number;
+    bonuses: Array<{ type: string; points: number; exp: number; label: string }>;
   }>({
     attemptCount: 0,
     attemptsRemaining: 10,
@@ -62,6 +63,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     isCorrect: false,
     playersCompleted: currentChallenge?.players_completed || 0,
     uniquePlayerCount: currentChallenge?.players_played || 0,
+    bonuses: [],
   });
 
   // Trigger state for answer submission (useAsync pattern)
@@ -110,6 +112,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
           isCorrect: data.attempt.is_solved,
           playersCompleted: data.challenge?.players_completed || currentChallenge?.players_completed || 0,
           uniquePlayerCount: data.challenge?.players_played || currentChallenge?.players_played || 0,
+          bonuses: [],
         });
       } else if (data && !data.attempt) {
         // No attempt yet, but update challenge stats
@@ -165,13 +168,22 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
             // If so, increment uniquePlayerCount
             const isFirstAttempt = prev.attemptsRemaining === 10 && result.attemptsRemaining < 10;
 
+            // Build reward message with bonuses
+            let rewardMessage = '';
+            if (result.isCorrect && result.reward) {
+              const bonuses = result.reward.bonuses || [];
+              const bonusLabels = bonuses.map(b => b.label).join(' ');
+              const totalPoints = result.reward.totalPoints || result.reward.points || 0;
+              rewardMessage = `+${totalPoints} points!${bonusLabels ? ' ' + bonusLabels : ''}`;
+            }
+
             return {
               ...prev,
               attemptCount: 10 - result.attemptsRemaining,
               attemptsRemaining: result.attemptsRemaining,
               potentialScore: result.potentialScore,
               message: result.isCorrect
-                ? `You earned +${result.reward?.points || 0} points!`
+                ? rewardMessage
                 : result.explanation,
               isGameOver: result.gameOver,
               isCorrect: result.isCorrect,
@@ -181,6 +193,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
               uniquePlayerCount: isFirstAttempt
                 ? (prev.uniquePlayerCount || 0) + 1
                 : prev.uniquePlayerCount,
+              bonuses: result.reward?.bonuses || [],
             };
           });
         }
@@ -261,7 +274,12 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
   return (
     <PlayGameView
       challenge={currentChallenge}
-      gameState={gameState}
+      gameState={{
+        message: gameState.message,
+        isGameOver: gameState.isGameOver,
+        isCorrect: gameState.isCorrect,
+        bonuses: gameState.bonuses,
+      }}
       attemptCount={gameState.attemptCount}
       attemptsRemaining={gameState.attemptsRemaining}
       potentialScore={gameState.potentialScore}
@@ -273,7 +291,6 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
       isGameOver={isGameOver}
       completedScore={completedScore}
       checkingCompletion={checkingCompletion}
-
       isProcessing={isProcessing}
       uniquePlayerCount={gameState.uniquePlayerCount}
       playersCompleted={gameState.playersCompleted}
