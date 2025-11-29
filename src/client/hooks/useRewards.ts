@@ -73,7 +73,7 @@ export function useRewards(
 ): UseRewardsResult {
   // State for current reward being displayed
   const [currentReward, setCurrentReward] = useState<Reward | null>(null);
-  
+
   // State for recent rewards history
   const [recentRewards, setRecentRewards] = useState<Reward[]>([]);
 
@@ -91,17 +91,17 @@ export function useRewards(
       id: `reward-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       timestamp: Date.now(),
     };
-    
+
     // Set as current reward
     setCurrentReward(newReward);
-    
+
     // Add to recent rewards history
     setRecentRewards(prev => {
       const updated = [newReward, ...prev];
       // Keep only the most recent rewards
       return updated.slice(0, maxRecentRewards);
     });
-    
+
     // Set up auto-dismiss if enabled
     if (autoDismissMs > 0) {
       // Note: Devvit doesn't support setTimeout in the same way as browser
@@ -154,29 +154,29 @@ export function createRewardMessage(
   level?: number,
   bonuses?: BonusInfo[]
 ): string {
-  const bonusLabels = bonuses && bonuses.length > 0 
+  const bonusLabels = bonuses && bonuses.length > 0
     ? ' ' + bonuses.map(b => b.label).join(' ')
     : '';
 
   switch (type) {
     case 'challenge_solved':
       return `Challenge solved! +${points || 0} points, +${experience || 0} exp${bonusLabels}`;
-    
+
     case 'challenge_created':
       return `Challenge created! +${points || 0} points, +${experience || 0} exp`;
-    
+
     case 'comment':
       return `Comment reward! +${points || 0} points, +${experience || 0} exp`;
-    
+
     case 'level_up':
       return `🎉 Level Up! You reached level ${level || 0}!`;
-    
+
     case 'points':
       return `+${points || 0} points`;
-    
+
     case 'experience':
       return `+${experience || 0} exp`;
-    
+
     default:
       return `Reward earned! +${points || 0} points, +${experience || 0} exp`;
   }
@@ -210,7 +210,7 @@ export function useLevelUpDetection(
     // Check if level increased
     if (currentLevel > lastCheckedLevel) {
       setLastCheckedLevel(currentLevel);
-      
+
       return {
         type: 'level_up',
         points: 0,

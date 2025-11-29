@@ -428,11 +428,12 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
         return <ChallengeCreationView {...createProps as ChallengeCreationViewProps} />;
     };
 
+    // Render logic
+    let mainContent = null;
+
     if (currentView === 'loading') {
         return <LoadingView />;
-    }
-
-    if (currentView === 'menu') {
+    } else if (currentView === 'menu') {
         const menuProps = {
             canCreateChallenge,
             rateLimitTimeRemaining,
@@ -443,17 +444,12 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             onNavigate: navigateTo,
             onSubscribe: handleSubscribe,
         };
-        return <MainMenuView {...menuProps as MainMenuViewProps} />;
-    }
-
-    if (currentView === 'gameplay') {
-
-        // If viewing a specific challenge, always show it (even if completed)
+        mainContent = <MainMenuView {...menuProps as MainMenuViewProps} />;
+    } else if (currentView === 'gameplay') {
         if (isViewingSpecificChallenge) {
-            // Safety check: ensure challenge exists
             if (!currentChallenge) {
                 console.warn('[Main] No current challenge found in gameplay view');
-                return (
+                mainContent = (
                     <AllCaughtUpView
                         onBackToMenu={() => {
                             setIsViewingSpecificChallenge(false);
@@ -462,38 +458,32 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                         message="Challenge not found"
                     />
                 );
+            } else {
+                mainContent = (
+                    <ErrorBoundary
+                        onError={() => {/* Error logged by ErrorBoundary component */ }}
+                        onReset={() => navigateTo('menu')}
+                    >
+                        <GameplayViewWrapper
+                            userId={userId}
+                            currentChallenge={currentChallenge}
+                            challenges={challenges}
+                            currentChallengeIndex={currentChallengeIndex}
+                            onNextChallenge={handleNextChallenge}
+                            onBackToMenu={() => {
+                                setIsViewingSpecificChallenge(false);
+                                navigateTo('menu');
+                            }}
+                            isLoadingNext={isLoadingNext}
+                            onReward={showReward}
+                        />
+                    </ErrorBoundary>
+                );
             }
-
-            return (
-                <ErrorBoundary
-                    onError={() => {/* Error logged by ErrorBoundary component */ }}
-                    onReset={() => navigateTo('menu')}
-                >
-                    <GameplayViewWrapper
-                        userId={userId}
-                        currentChallenge={currentChallenge}
-                        challenges={challenges}
-                        currentChallengeIndex={currentChallengeIndex}
-                        onNextChallenge={handleNextChallenge}
-                        onBackToMenu={() => {
-                            setIsViewingSpecificChallenge(false);
-                            navigateTo('menu');
-                        }}
-                        isLoadingNext={isLoadingNext}
-                        onReward={showReward}
-                    />
-                </ErrorBoundary>
-            );
-        }
-
-        // Show loading while challenges are being fetched
-        if (!challengesLoaded) {
-            return <LoadingView />;
-        }
-
-        // Check if we have available challenges to show
-        if (availableChallenges.length === 0 || !currentChallenge) {
-            return (
+        } else if (!challengesLoaded) {
+            mainContent = <LoadingView />;
+        } else if (availableChallenges.length === 0 || !currentChallenge) {
+            mainContent = (
                 <AllCaughtUpView
                     onBackToMenu={() => navigateTo('menu')}
                     message={challenges.length === 0
@@ -501,85 +491,92 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                         : "You've completed all available challenges!"}
                 />
             );
+        } else {
+            mainContent = (
+                <ErrorBoundary
+                    onError={() => {/* Error logged by ErrorBoundary component */ }}
+                    onReset={() => navigateTo('menu')}
+                >
+                    <GameplayViewWrapper
+                        userId={userId}
+                        currentChallenge={currentChallenge}
+                        challenges={availableChallenges}
+                        currentChallengeIndex={currentChallengeIndex}
+                        onNextChallenge={handleNextChallenge}
+                        onBackToMenu={() => navigateTo('menu')}
+                        isLoadingNext={isLoadingNext}
+                        onReward={showReward}
+                    />
+                </ErrorBoundary>
+            );
         }
+    } else {
+        // Default views (profile, leaderboard, create, awards)
+        mainContent = (
+            <zstack width="100%" height="100%" alignment="center middle">
+                <vstack width="100%" height="100%" gap="none">
+                    <NavigationBar
+                        currentView={currentView}
+                        onNavigate={navigateTo}
+                    />
 
-        return (
-            <ErrorBoundary
-                onError={() => {/* Error logged by ErrorBoundary component */ }}
-                onReset={() => navigateTo('menu')}
-            >
-                <GameplayViewWrapper
-                    userId={userId}
-                    currentChallenge={currentChallenge}
-                    challenges={availableChallenges}
-                    currentChallengeIndex={currentChallengeIndex}
-                    onNextChallenge={handleNextChallenge}
-                    onBackToMenu={() => navigateTo('menu')}
-                    isLoadingNext={isLoadingNext}
-                    onReward={showReward}
-                />
-            </ErrorBoundary>
+                    <ViewContainer currentView={currentView}>
+                        {currentView === 'profile' && (
+                            <ErrorBoundary
+                                onError={() => {/* Error logged by ErrorBoundary component */ }}
+                                onReset={() => navigateTo('menu')}
+                            >
+                                <ProfileView
+                                    userId={userId}
+                                    username={username}
+                                    userService={services.userService}
+                                />
+                            </ErrorBoundary>
+                        )}
+                        {currentView === 'leaderboard' && (
+                            <ErrorBoundary
+                                onError={() => {/* Error logged by ErrorBoundary component */ }}
+                                onReset={() => navigateTo('menu')}
+                            >
+                                <LeaderboardView
+                                    userId={userId}
+                                    leaderboardService={services.leaderboardService}
+                                />
+                            </ErrorBoundary>
+                        )}
+                        {currentView === 'create' && (
+                            <ErrorBoundary
+                                onError={() => {/* Error logged by ErrorBoundary component */ }}
+                                onReset={() => navigateTo('menu')}
+                            >
+                                <CreateView />
+                            </ErrorBoundary>
+                        )}
+                        {currentView === 'awards' && (
+                            <ErrorBoundary
+                                onError={() => {/* Error logged by ErrorBoundary component */ }}
+                                onReset={() => navigateTo('menu')}
+                            >
+                                <AwardsView
+                                    userId={userId}
+                                    username={username}
+                                    userService={services.userService}
+                                    onBack={() => navigateTo('menu')}
+                                />
+                            </ErrorBoundary>
+                        )}
+                    </ViewContainer>
+                </vstack>
+            </zstack>
         );
     }
 
     return (
         <zstack width="100%" height="100%" alignment="center middle">
-            <vstack width="100%" height="100%" gap="none">
-                <NavigationBar
-                    currentView={currentView}
-                    onNavigate={navigateTo}
-                />
-
-                <ViewContainer currentView={currentView}>
-                    {currentView === 'profile' && (
-                        <ErrorBoundary
-                            onError={() => {/* Error logged by ErrorBoundary component */ }}
-                            onReset={() => navigateTo('menu')}
-                        >
-                            <ProfileView
-                                userId={userId}
-                                username={username}
-                                userService={services.userService}
-                            />
-                        </ErrorBoundary>
-                    )}
-                    {currentView === 'leaderboard' && (
-                        <ErrorBoundary
-                            onError={() => {/* Error logged by ErrorBoundary component */ }}
-                            onReset={() => navigateTo('menu')}
-                        >
-                            <LeaderboardView
-                                userId={userId}
-                                leaderboardService={services.leaderboardService}
-                            />
-                        </ErrorBoundary>
-                    )}
-                    {currentView === 'create' && (
-                        <ErrorBoundary
-                            onError={() => {/* Error logged by ErrorBoundary component */ }}
-                            onReset={() => navigateTo('menu')}
-                        >
-                            <CreateView />
-                        </ErrorBoundary>
-                    )}
-                    {currentView === 'awards' && (
-                        <ErrorBoundary
-                            onError={() => {/* Error logged by ErrorBoundary component */ }}
-                            onReset={() => navigateTo('menu')}
-                        >
-                            <AwardsView
-                                userId={userId}
-                                username={username}
-                                userService={services.userService}
-                                onBack={() => navigateTo('menu')}
-                            />
-                        </ErrorBoundary>
-                    )}
-                </ViewContainer>
-            </vstack>
+            {mainContent}
 
             {/* Reward Notification Overlay */}
-            {currentReward && (
+            {currentReward ? (
                 <RewardNotification
                     type={currentReward.type}
                     points={currentReward.points}
@@ -588,7 +585,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     message={currentReward.message}
                     onDismiss={dismissReward}
                 />
-            )}
+            ) : null}
         </zstack>
     );
 };
