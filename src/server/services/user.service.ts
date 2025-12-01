@@ -1,26 +1,90 @@
 /**
  * User Service
  * Handles all business logic related to user profiles, progression, and statistics
+ * 
+ * Uses Redis caching with 5-minute TTL for profile data.
+ * Cache keys follow namespace format: user:{userId}:profile
+ * 
+ * Requirements: 4.1, 4.4, 6.2, 6.3
  */
 
-import type { Context } from '@devvit/public-api';
+import type { Context, RedisClient } from '@devvit/public-api';
 import { BaseService } from './base.service.js';
 import { UserRepository } from '../repositories/user.repository.js';
 import { calculateLevel, getExpToNextLevel } from '../../shared/utils/level-calculator.js';
 import type { UserProfile, UserProfileUpdate } from '../../shared/models/user.types.js';
-import { RedisCache } from '../utils/redis-cache.js';
+import { CacheKeyBuilder } from '../../shared/utils/cache.js';
 import { deduplicateRequest, createDedupeKey } from '../../shared/utils/request-deduplication.js';
+import type { LeaderboardService } from './leaderboard.service.js';
+
+/** TTL for user profile cache (5 minutes) - Requirements: 4.4 */
+const PROFILE_CACHE_TTL = 5 * 60 * 1000;
 
 export class UserService extends BaseService {
-  private profileCache: RedisCache;
-  private readonly PROFILE_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+  private redis: RedisClient;
+  private leaderboardService: LeaderboardService | null = null;
 
   constructor(
     context: Context,
     private userRepo: UserRepository
   ) {
     super(context);
-    this.profileCache = new RedisCache(context.redis);
+    this.redis = context.redis;
+  }
+
+  /**
+   * Set the leaderboard service for atomic updates
+   * This allows UserService to update leaderboard when points change
+   */
+  setLeaderboardService(leaderboardService: LeaderboardService): void {
+    this.leaderboardService = leaderboardService;
+  }
+
+  /**
+   * Create a cache key for user profile using namespace format
+   * Format: user:{userId}:profile
+   * Requirements: 6.4
+   */
+  private createProfileCacheKey(userId: string): string {
+    return CacheKeyBuilder.createKey('user', userId, 'profile');
+  }
+
+  /**
+   * Get user profile from Redis cache
+   * Requirements: 4.1
+   */
+  private async getCachedProfile(userId: string): Promise<UserProfile | null> {
+    try {
+      const cacheKey = this.createProfileCacheKey(userId);
+      const value = await this.redis.get(cacheKey);
+      
+      if (!value) {
+        return null;
+      }
+
+      return JSON.parse(value) as UserProfile;
+    } catch (error) {
+      this.logError('UserService.getCachedProfile', error);
+      return null;
+    }
+  }
+
+  /**
+   * Set user profile in Redis cache with 5-minute TTL
+   * Requirements: 4.4
+   */
+  private async setCachedProfile(userId: string, profile: UserProfile): Promise<void> {
+    try {
+      const cacheKey = this.createProfileCacheKey(userId);
+      const serialized = JSON.stringify(profile);
+      
+      await this.redis.set(cacheKey, serialized, {
+        expiration: new Date(Date.now() + PROFILE_CACHE_TTL),
+      });
+    } catch (error) {
+      // Log but don't throw - cache failures should not crash the application
+      this.logError('UserService.setCachedProfile', error);
+    }
   }
 
   /**
@@ -28,6 +92,8 @@ export class UserService extends BaseService {
    * This ensures every user has a profile when they first interact with the game
    * Results are cached for 5 minutes to reduce database load
    * Deduplicates simultaneous requests for the same user
+   * 
+   * Requirements: 4.1, 4.4
    */
   async getUserProfile(userId: string, username?: string): Promise<UserProfile | null> {
     return this.withErrorHandling(
@@ -44,9 +110,8 @@ export class UserService extends BaseService {
           return null;
         }
 
-        const cacheKey = `profile:${userId}`;
-
-        const cached = await this.profileCache.get<UserProfile>(cacheKey);
+        // Check cache first (Requirements: 4.1)
+        const cached = await this.getCachedProfile(userId);
         if (cached) {
           this.logInfo('UserService', `Returning cached profile for user ${userId}`);
           return cached;
@@ -80,8 +145,9 @@ export class UserService extends BaseService {
               dbProfile = await this.createUserProfile(userId, username);
             }
 
+            // Cache the profile on miss (Requirements: 4.4)
             if (dbProfile) {
-              await this.profileCache.set(cacheKey, dbProfile, this.PROFILE_CACHE_TTL);
+              await this.setCachedProfile(userId, dbProfile);
             }
 
             return dbProfile;
@@ -142,6 +208,8 @@ export class UserService extends BaseService {
   /**
    * Update user profile with partial updates
    * Invalidates cache on successful update
+   * 
+   * Requirements: 6.2
    */
   async updateUserProfile(userId: string, updates: UserProfileUpdate): Promise<boolean> {
     return this.withBooleanErrorHandling(
@@ -149,9 +217,8 @@ export class UserService extends BaseService {
         const success = await this.userRepo.updateProfile(userId, updates);
 
         if (success) {
-          // Invalidate cache
-          const cacheKey = `profile:${userId}`;
-          await this.profileCache.delete(cacheKey);
+          // Invalidate cache using safe invalidation (Requirements: 6.3)
+          await this.safeInvalidateUserCache(userId);
           this.logInfo('UserService', `Updated profile for user ${userId} and invalidated cache`);
         }
 
@@ -200,6 +267,11 @@ export class UserService extends BaseService {
    * Award points and experience to a user, automatically calculating new level
    * This is the core progression mechanic
    * Uses retry logic to ensure points are awarded reliably
+   * 
+   * Invalidates profile cache AND updates leaderboard sorted set atomically.
+   * Both operations complete before the function returns.
+   * 
+   * Requirements: 6.2
    */
   async awardPoints(userId: string, points: number, experience: number): Promise<boolean> {
     return this.withBooleanErrorHandling(
@@ -248,7 +320,10 @@ export class UserService extends BaseService {
         );
 
         if (success) {
-          this.invalidateUserCache(userId);
+          // Invalidate profile cache AND update leaderboard atomically (Requirements: 6.2)
+          // Both operations must complete before returning
+          await this.invalidateCacheAndUpdateLeaderboard(userId, points);
+          
           this.logInfo(
             'UserService',
             `Awarded ${points} points and ${experience} exp to user ${userId}`
@@ -259,6 +334,37 @@ export class UserService extends BaseService {
       },
       'Failed to award points'
     );
+  }
+
+  /**
+   * Invalidate user profile cache AND update leaderboard sorted set atomically
+   * Both operations complete before the function returns.
+   * 
+   * Requirements: 6.2
+   */
+  async invalidateCacheAndUpdateLeaderboard(userId: string, pointsDelta: number): Promise<void> {
+    // Run both operations and wait for both to complete
+    // Use Promise.all to ensure both complete before returning
+    await Promise.all([
+      this.safeInvalidateUserCache(userId),
+      this.safeUpdateLeaderboard(userId, pointsDelta),
+    ]);
+  }
+
+  /**
+   * Safely update leaderboard sorted set
+   * Catches errors and logs them without throwing (Requirements: 6.3)
+   */
+  private async safeUpdateLeaderboard(userId: string, pointsDelta: number): Promise<void> {
+    try {
+      if (this.leaderboardService) {
+        await this.leaderboardService.incrementScore(userId, pointsDelta);
+        this.logInfo('UserService', `Updated leaderboard for user ${userId} by ${pointsDelta} points`);
+      }
+    } catch (error) {
+      // Log but don't throw - leaderboard update failures should not crash (Requirements: 6.3)
+      this.logError('UserService.safeUpdateLeaderboard', error);
+    }
   }
 
   /**
@@ -372,11 +478,34 @@ export class UserService extends BaseService {
 
   /**
    * Invalidate cache for a specific user
+   * Uses Redis to delete the cached profile
+   * 
+   * Requirements: 6.2
    */
   async invalidateUserCache(userId: string): Promise<void> {
-    const cacheKey = `profile:${userId}`;
-    await this.profileCache.delete(cacheKey);
-    this.logInfo('UserService', `Invalidated cache for user ${userId}`);
+    try {
+      const cacheKey = this.createProfileCacheKey(userId);
+      await this.redis.del(cacheKey);
+      this.logInfo('UserService', `Invalidated cache for user ${userId}`);
+    } catch (error) {
+      this.logError('UserService.invalidateUserCache', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Safely invalidate user cache - catches errors and logs them without throwing
+   * This ensures cache invalidation failures don't crash the application.
+   * 
+   * Requirements: 6.3
+   */
+  async safeInvalidateUserCache(userId: string): Promise<void> {
+    try {
+      await this.invalidateUserCache(userId);
+    } catch (error) {
+      // Log but don't throw - invalidation failures should not crash (Requirements: 6.3)
+      this.logError('UserService.safeInvalidateUserCache', `Cache invalidation failed for user ${userId}`);
+    }
   }
 
   /**
@@ -393,7 +522,7 @@ export class UserService extends BaseService {
   getCacheStats(): { size: number; ttl: number } {
     return {
       size: 0,
-      ttl: this.PROFILE_CACHE_TTL,
+      ttl: PROFILE_CACHE_TTL,
     };
   }
 

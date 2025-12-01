@@ -1,13 +1,12 @@
 /**
  * Leaderboard Service
  * Handles all business logic related to leaderboard rankings and player statistics
+ * Uses Redis sorted sets for O(log N) ranking operations
  */
 
-import type { Context } from '@devvit/public-api';
+import type { Context, RedisClient } from '@devvit/public-api';
 import { BaseService } from './base.service.js';
 import { UserRepository } from '../repositories/user.repository.js';
-
-import { RedisCache } from '../utils/redis-cache.js';
 import { createPaginatedResult, DEFAULT_PAGE_SIZE, type PaginatedResult } from '../../shared/utils/pagination.js';
 
 export type LeaderboardEntry = {
@@ -20,84 +19,245 @@ export type LeaderboardEntry = {
   isCurrentUser: boolean;
 };
 
+// Redis sorted set key for leaderboard
+const LEADERBOARD_KEY = 'leaderboard:points';
+
 export class LeaderboardService extends BaseService {
-  private leaderboardCache: RedisCache;
-  private readonly LEADERBOARD_CACHE_TTL = 60 * 1000; // 1 minute cache
+  private redis: RedisClient;
 
   constructor(
     context: Context,
     private userRepo: UserRepository
   ) {
     super(context);
-    this.leaderboardCache = new RedisCache(context.redis);
+    this.redis = context.redis;
   }
 
   /**
-   * Get top players sorted by total points
-   * Results are cached for 1 minute to reduce database load
+   * Add or update a user's score in the leaderboard sorted set
+   * Uses zAdd for storing scores with key 'leaderboard:points'
+   * Requirements: 9.1
+   */
+  async updateScore(userId: string, points: number): Promise<void> {
+    try {
+      await this.redis.zAdd(LEADERBOARD_KEY, { member: userId, score: points });
+      this.logInfo('LeaderboardService', `Updated score for user ${userId}: ${points}`);
+    } catch (error) {
+      this.logError('LeaderboardService.updateScore', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Increment a user's score atomically using zIncrBy
+   * Prevents race conditions with read-modify-write
+   * Requirements: 9.4
+   */
+  async incrementScore(userId: string, delta: number): Promise<number> {
+    try {
+      const newScore = await this.redis.zIncrBy(LEADERBOARD_KEY, userId, delta);
+      this.logInfo('LeaderboardService', `Incremented score for user ${userId} by ${delta}, new score: ${newScore}`);
+      return newScore;
+    } catch (error) {
+      this.logError('LeaderboardService.incrementScore', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get a user's score from the sorted set
+   */
+  async getUserScore(userId: string): Promise<number | null> {
+    try {
+      const score = await this.redis.zScore(LEADERBOARD_KEY, userId);
+      return score ?? null;
+    } catch (error) {
+      this.logError('LeaderboardService.getUserScore', error);
+      return null;
+    }
+  }
+
+
+  /**
+   * Get top N players sorted by total points (descending)
+   * Uses zRange with { by: 'rank', reverse: true } for O(log N) retrieval
+   * Requirements: 9.2
+   * 
+   * Falls back to database query if Redis fails (Requirements: 7.1)
    */
   async getTopPlayers(limit: number = 10, offset: number = 0): Promise<LeaderboardEntry[]> {
-    const result = await this.withErrorHandling(
-      async () => {
-        const cacheKey = `leaderboard:${limit}:${offset}`;
-
-        const cached = await this.leaderboardCache.get<LeaderboardEntry[]>(cacheKey);
-        if (cached) {
-          this.logInfo('LeaderboardService', `Returning cached leaderboard (limit: ${limit}, offset: ${offset})`);
-          return cached;
-        }
-
-        const users = await this.userRepo.findByPoints(limit, offset);
-
-        const entries: LeaderboardEntry[] = users.map((user, index) => ({
-          rank: offset + index + 1,
-          userId: user.user_id,
-          username: user.username,
-          totalPoints: user.total_points,
-          level: user.level,
-          challengesSolved: user.challenges_solved,
-          isCurrentUser: false,
-        }));
-
-        await this.leaderboardCache.set(cacheKey, entries, this.LEADERBOARD_CACHE_TTL);
-        this.logInfo('LeaderboardService', `Cached leaderboard (limit: ${limit}, offset: ${offset})`);
-
+    try {
+      // Try Redis sorted set first
+      const entries = await this.getTopPlayersFromRedis(limit, offset);
+      if (entries.length > 0) {
         return entries;
-      },
-      'Failed to get top players'
-    );
-    return result || [];
+      }
+      
+      // Fall back to database if Redis returns empty (might not be populated yet)
+      return await this.getTopPlayersFromDatabase(limit, offset);
+    } catch (error) {
+      // Redis failed - fall back to database (Requirements: 7.1)
+      this.logError('LeaderboardService.getTopPlayers', error);
+      console.error('[LeaderboardService] Redis failed, falling back to database:', error);
+      return await this.getTopPlayersFromDatabase(limit, offset);
+    }
   }
 
   /**
-   * Get a user's rank on the leaderboard
-   * Returns null if user not found or has no points
+   * Get top players from Redis sorted set
+   * Uses zRange with { by: 'rank', reverse: true } for descending order
+   */
+  private async getTopPlayersFromRedis(limit: number, offset: number): Promise<LeaderboardEntry[]> {
+    // Get top players from sorted set in descending order (highest scores first)
+    const start = offset;
+    const end = offset + limit - 1;
+    
+    const members = await this.redis.zRange(LEADERBOARD_KEY, start, end, { 
+      by: 'rank', 
+      reverse: true 
+    });
+
+    if (!members || members.length === 0) {
+      return [];
+    }
+
+    // Fetch user details for each member
+    const entries: LeaderboardEntry[] = [];
+    for (let i = 0; i < members.length; i++) {
+      const member = members[i];
+      const userId = member.member;
+      const score = member.score;
+      
+      // Get user profile for additional details
+      const userProfile = await this.userRepo.findById(userId);
+      
+      if (userProfile) {
+        entries.push({
+          rank: offset + i + 1, // 1-indexed rank
+          userId: userProfile.user_id,
+          username: userProfile.username,
+          totalPoints: score,
+          level: userProfile.level,
+          challengesSolved: userProfile.challenges_solved,
+          isCurrentUser: false,
+        });
+      }
+    }
+
+    return entries;
+  }
+
+  /**
+   * Fallback: Get top players from database
+   * Used when Redis is unavailable (Requirements: 7.1)
+   */
+  private async getTopPlayersFromDatabase(limit: number, offset: number): Promise<LeaderboardEntry[]> {
+    const users = await this.userRepo.findByPoints(limit, offset);
+
+    return users.map((user, index) => ({
+      rank: offset + index + 1,
+      userId: user.user_id,
+      username: user.username,
+      totalPoints: user.total_points,
+      level: user.level,
+      challengesSolved: user.challenges_solved,
+      isCurrentUser: false,
+    }));
+  }
+
+  /**
+   * Get a user's rank on the leaderboard (1-indexed)
+   * Uses zRank and zCard to calculate reverse rank for descending order
+   * Requirements: 9.3
+   * 
+   * Falls back to database query if Redis fails (Requirements: 7.1)
    */
   async getUserRank(userId: string): Promise<number | null> {
-    return this.withErrorHandling(
-      async () => {
-        return this.userRepo.getUserRank(userId);
-      },
-      'Failed to get user rank'
-    );
+    try {
+      // Try Redis first
+      const rank = await this.getUserRankFromRedis(userId);
+      if (rank !== null) {
+        return rank;
+      }
+      
+      // Fall back to database
+      return await this.userRepo.getUserRank(userId);
+    } catch (error) {
+      // Redis failed - fall back to database (Requirements: 7.1)
+      this.logError('LeaderboardService.getUserRank', error);
+      console.error('[LeaderboardService] Redis failed for getUserRank, falling back to database:', error);
+      return await this.userRepo.getUserRank(userId);
+    }
   }
 
   /**
-   * Refresh the leaderboard cache
-   * Call this after significant point changes or on-demand
+   * Get user rank from Redis sorted set
+   * Since zRank returns 0-indexed rank for ascending order,
+   * we need to calculate: totalCount - zRank to get descending rank,
+   * then add 1 for 1-indexed result
+   * Requirements: 9.3
+   */
+  private async getUserRankFromRedis(userId: string): Promise<number | null> {
+    // Get the 0-indexed rank (ascending order - lowest score = rank 0)
+    const ascendingRank = await this.redis.zRank(LEADERBOARD_KEY, userId);
+    
+    if (ascendingRank === null || ascendingRank === undefined) {
+      return null;
+    }
+
+    // Get total count to calculate descending rank
+    const totalCount = await this.redis.zCard(LEADERBOARD_KEY);
+    
+    if (totalCount === 0) {
+      return null;
+    }
+
+    // Convert to descending rank (highest score = rank 1)
+    // ascendingRank 0 = lowest score, should be rank totalCount
+    // ascendingRank (totalCount-1) = highest score, should be rank 1
+    // Formula: descendingRank = totalCount - ascendingRank
+    // Then add 0 since we want 1-indexed (the formula already gives 1-indexed)
+    const descendingRank = totalCount - ascendingRank;
+    
+    return descendingRank;
+  }
+
+
+  /**
+   * Sync a user's score from database to Redis sorted set
+   * Useful for initial population or recovery
+   */
+  async syncUserScore(userId: string): Promise<void> {
+    try {
+      const userProfile = await this.userRepo.findById(userId);
+      if (userProfile) {
+        await this.updateScore(userId, userProfile.total_points);
+      }
+    } catch (error) {
+      this.logError('LeaderboardService.syncUserScore', error);
+    }
+  }
+
+  /**
+   * Refresh the leaderboard by syncing from database
+   * Call this to populate Redis sorted set from database
    */
   async refreshLeaderboard(): Promise<void> {
     try {
-      this.logInfo('LeaderboardService', 'Refreshing leaderboard cache');
+      this.logInfo('LeaderboardService', 'Refreshing leaderboard from database');
+      
+      // Get all users with points from database
+      const users = await this.userRepo.findByPoints(1000, 0);
+      
+      // Add each user to the sorted set
+      for (const user of users) {
+        await this.redis.zAdd(LEADERBOARD_KEY, { 
+          member: user.user_id, 
+          score: user.total_points 
+        });
+      }
 
-      // Note: With Redis we can't easily clear all keys matching a pattern without SCAN
-      // So we just refresh the default view (top 10)
-      const cacheKey = `leaderboard:10:0`;
-      await this.leaderboardCache.delete(cacheKey);
-
-      await this.getTopPlayers(10, 0);
-
-      this.logInfo('LeaderboardService', 'Leaderboard cache refreshed');
+      this.logInfo('LeaderboardService', `Leaderboard refreshed with ${users.length} users`);
     } catch (error) {
       this.logError('LeaderboardService.refreshLeaderboard', error);
     }
@@ -150,7 +310,6 @@ export class LeaderboardService extends BaseService {
 
   /**
    * Get leaderboard statistics
-   * Useful for displaying overall game stats
    */
   async getLeaderboardStats(): Promise<{
     totalPlayers: number;
@@ -158,13 +317,17 @@ export class LeaderboardService extends BaseService {
     averageScore: number;
   }> {
     try {
+      // Get total players from sorted set
+      const totalPlayers = await this.redis.zCard(LEADERBOARD_KEY);
+      
+      // Get top player's score
       const topPlayers = await this.getTopPlayers(1, 0);
       const topScore = topPlayers.length > 0 ? topPlayers[0].totalPoints : 0;
 
       return {
-        totalPlayers: 0, // Would need COUNT query
+        totalPlayers,
         topScore,
-        averageScore: 0, // Would need AVG query
+        averageScore: 0, // Would need to sum all scores
       };
     } catch (error) {
       this.logError('LeaderboardService.getLeaderboardStats', error);
@@ -177,19 +340,29 @@ export class LeaderboardService extends BaseService {
   }
 
   /**
-   * Clear the leaderboard cache - NOT SUPPORTED IN REDIS IMPLEMENTATION
+   * Clear the leaderboard cache (removes all entries from sorted set)
    */
   async clearCache(): Promise<void> {
-    this.logInfo('LeaderboardService', 'Clear cache not supported with Redis');
+    try {
+      // Remove all entries by removing the key
+      // Note: Devvit Redis doesn't have DEL for sorted sets, so we use zRemRangeByRank
+      const count = await this.redis.zCard(LEADERBOARD_KEY);
+      if (count > 0) {
+        await this.redis.zRemRangeByRank(LEADERBOARD_KEY, 0, count - 1);
+      }
+      this.logInfo('LeaderboardService', 'Leaderboard cache cleared');
+    } catch (error) {
+      this.logError('LeaderboardService.clearCache', error);
+    }
   }
 
   /**
-   * Get cache statistics - NOT SUPPORTED IN REDIS IMPLEMENTATION
+   * Get cache statistics
    */
   getCacheStats(): { size: number; ttl: number } {
     return {
-      size: 0,
-      ttl: this.LEADERBOARD_CACHE_TTL,
+      size: 0, // Would need async call to get zCard
+      ttl: 0, // Sorted sets don't have TTL
     };
   }
 
@@ -219,5 +392,17 @@ export class LeaderboardService extends BaseService {
     );
 
     return result || createPaginatedResult([], pageSize);
+  }
+
+  /**
+   * Remove a user from the leaderboard
+   */
+  async removeUser(userId: string): Promise<void> {
+    try {
+      await this.redis.zRem(LEADERBOARD_KEY, [userId]);
+      this.logInfo('LeaderboardService', `Removed user ${userId} from leaderboard`);
+    } catch (error) {
+      this.logError('LeaderboardService.removeUser', error);
+    }
   }
 }

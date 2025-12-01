@@ -358,12 +358,29 @@ npm run launch
 
 ## Performance Optimizations
 
-The codebase includes several key optimizations:
+The codebase includes comprehensive performance optimizations:
 
-1. **Batch Fetching**: User attempts are fetched once per operation instead of N+1 queries
-2. **Redis Caching**: User profiles (5min), leaderboard (60s), feed (30s), AI validations (indefinite)
-3. **Request Deduplication**: Simultaneous requests for the same data share results
-4. **Atomic Operations**: Database updates use atomic functions to prevent race conditions
+### Caching Strategy
+- **context.cache()**: Shared data (challenge feed) cached for 30 seconds using Devvit's built-in cache helper
+- **Redis Caching**: User profiles (5min TTL), leaderboard (60s), avatar URLs (24hr), AI validations (indefinite)
+- **Cache Key Format**: Consistent namespaced keys `{entity}:{identifier}:{qualifier}`
+
+### Data Loading Patterns
+- **Batch Fetching**: User attempts fetched once per operation instead of N+1 queries
+- **Request Deduplication**: Simultaneous requests for the same data share results via promise caching
+- **Challenge Preloading**: Next 2-3 challenges preloaded in background after current loads
+- **Parallel Fetching**: User profile, challenges, and rate limit status fetched in parallel with Promise.all
+
+### Leaderboard Optimization
+- **Redis Sorted Sets**: O(log N) operations for ranking queries
+- **Atomic Score Updates**: zIncrBy prevents race conditions
+- **1-Indexed Ranks**: User-friendly ranking display
+
+### Reliability
+- **Graceful Degradation**: Redis failures fall back to direct database queries
+- **Exponential Backoff**: Retry logic with 1s base delay, max 3 retries
+- **Silent Preload Failures**: Preload errors don't block gameplay
+- **Safe Cache Invalidation**: Invalidation errors logged but don't crash the app
 
 ## License
 

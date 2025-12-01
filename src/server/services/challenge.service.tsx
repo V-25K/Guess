@@ -1,9 +1,11 @@
 /**
 * Challenge Service
 * Handles all business logic related to challenge creation, retrieval, and management
+* 
+* Requirements: 1.3, 5.2, 8.1
 */
 
-import type { Context } from '@devvit/public-api';
+import type { Context, JSONValue } from '@devvit/public-api';
 import { Devvit } from '@devvit/public-api';
 import { BaseService } from './base.service.js';
 import { ChallengeRepository } from '../repositories/challenge.repository.js';
@@ -12,10 +14,16 @@ import { getCreationReward } from '../../shared/utils/reward-calculator.js';
 import type { Challenge, ChallengeCreate, ChallengeFilters } from '../../shared/models/challenge.types.js';
 import { createPaginatedResult, DEFAULT_PAGE_SIZE, type PaginatedResult } from '../../shared/utils/pagination.js';
 import { RedisCache } from '../utils/redis-cache.js';
+import { TTL } from './cache.service.js';
+
+/** Cache key for challenge feed - shared across all users */
+export const FEED_CACHE_KEY = 'feed:challenges';
+
+/** TTL for challenge feed cache (30 seconds) - Requirements: 8.1 */
+export const FEED_CACHE_TTL = TTL.CHALLENGE_FEED;
 
 export class ChallengeService extends BaseService {
   private feedCache: RedisCache;
-  private readonly FEED_CACHE_TTL = 30 * 1000; // 30 seconds
 
   constructor(
     context: Context,
@@ -292,36 +300,68 @@ export class ChallengeService extends BaseService {
   /**
    * Get challenges with optional filters
    * Returns paginated results
-   * Caches the result if no filters are applied (main feed)
+   * Uses context.cache() for main feed (no filters) - shared across all users
+   * 
+   * Requirements: 1.3, 8.1
    */
   async getChallenges(filters?: ChallengeFilters): Promise<Challenge[]> {
     const result = await this.withErrorHandling(
       async () => {
-        // Only cache if no filters are applied (main feed)
+        // Only use context.cache() if no filters are applied (main feed)
+        // This is non-personalized data safe to share across all users (Requirement 8.2)
         const isMainFeed = !filters || Object.keys(filters).length === 0;
-        const cacheKey = 'feed:all';
 
         if (isMainFeed) {
-          const cached = await this.feedCache.get<Challenge[]>(cacheKey);
-          if (cached) {
-            this.logInfo('ChallengeService', 'Returning cached feed');
-            return cached;
+          // Use context.cache() for shared feed data (Requirement 8.1)
+          // Key: 'feed:challenges', TTL: 30 seconds
+          const cachedFeed = await this.getCachedFeed();
+          if (cachedFeed !== null) {
+            return cachedFeed;
           }
         }
 
+        // Fetch from database if not cached or filters applied
         const challenges = await this.challengeRepo.findAll(filters);
-
-        if (isMainFeed && challenges) {
-          await this.feedCache.set(cacheKey, challenges, this.FEED_CACHE_TTL);
-          this.logInfo('ChallengeService', 'Cached feed');
-        }
-
         return challenges;
       },
       'Failed to get challenges'
     );
 
     return result || [];
+  }
+
+  /**
+   * Get cached challenge feed using context.cache()
+   * 
+   * Uses Devvit's context.cache() helper which combines Redis with local
+   * in-memory write-through cache. Returns cached feed for all users within TTL.
+   * Cache refresh happens transparently when one user makes the real request.
+   * 
+   * Requirements: 1.3, 8.1, 8.3
+   * 
+   * @returns Cached challenges or null on error
+   */
+  async getCachedFeed(): Promise<Challenge[] | null> {
+    try {
+      const challenges = await this.context.cache<Challenge[]>(
+        async () => {
+          this.logInfo('ChallengeService', 'Cache miss - fetching feed from database');
+          const data = await this.challengeRepo.findAll();
+          return data as unknown as JSONValue as Challenge[];
+        },
+        {
+          key: FEED_CACHE_KEY,
+          ttl: FEED_CACHE_TTL,
+        }
+      );
+
+      this.logInfo('ChallengeService', 'Returning feed from context.cache()');
+      return challenges;
+    } catch (error) {
+      // Return null as fallback on error (Requirement 8.3)
+      this.logError('ChallengeService.getCachedFeed', error);
+      return null;
+    }
   }
   async getChallengesPaginated(
     filters?: ChallengeFilters,

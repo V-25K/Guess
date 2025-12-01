@@ -16,11 +16,15 @@ import { AttemptService } from '../server/services/attempt.service.js';
 import { AIValidationService } from '../server/services/ai-validation.service.js';
 import { LeaderboardService } from '../server/services/leaderboard.service.js';
 import { CommentService } from '../server/services/comment.service.js';
+import { PreloadService } from '../server/services/preload.service.js';
+import { CacheService } from '../server/services/cache.service.js';
 
 import { UserRepository } from '../server/repositories/user.repository.js';
 import { ChallengeRepository } from '../server/repositories/challenge.repository.js';
 import { AttemptRepository } from '../server/repositories/attempt.repository.js';
 import { CommentRepository } from '../server/repositories/comment.repository.js';
+
+import { RequestDeduplicator, createDedupeKey } from '../shared/utils/request-deduplication.js';
 
 import { useNavigation } from './hooks/useNavigation.js';
 import { useRewards } from './hooks/useRewards.js';
@@ -38,9 +42,9 @@ import { RewardNotification } from './components/shared/RewardNotification.js';
 import { AwardsView } from './components/awards/AwardsView.js';
 
 import { convertToGameChallenges } from '../shared/utils/challenge-utils.js';
-import { fetchAvatarUrl } from '../server/utils/challenge-utils.js';
+import { fetchAvatarUrlCached } from '../server/utils/challenge-utils.js';
 
-import type { GameChallenge } from '../shared/models/challenge.types.js';
+import type { GameChallenge, Challenge } from '../shared/models/challenge.types.js';
 
 /**
  * Initialize all services with dependency injection
@@ -59,6 +63,11 @@ function initializeServices(context: Context) {
     const aiValidationService = new AIValidationService(context);
     const leaderboardService = new LeaderboardService(context, userRepo);
     const commentService = new CommentService(context, commentRepo, userService);
+    
+    // Performance optimization services
+    const preloadService = new PreloadService();
+    const cacheService = new CacheService(context);
+    const requestDeduplicator = new RequestDeduplicator();
 
     return {
         userService,
@@ -67,6 +76,9 @@ function initializeServices(context: Context) {
         aiValidationService,
         leaderboardService,
         commentService,
+        preloadService,
+        cacheService,
+        requestDeduplicator,
     };
 }
 
@@ -155,10 +167,15 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     const [isModerator, setIsModerator] = useState(false);
 
     // Load user profile separately to ensure state updates work
+    // Uses request deduplication to prevent duplicate fetches (Requirement 4.3)
     useAsync(async () => {
         if (!currentUser) return null;
 
-        const profile = await services.userService.getUserProfile(userId, username);
+        // Deduplicate profile requests using RequestDeduplicator
+        const dedupeKey = createDedupeKey('profile', userId);
+        const profile = await services.requestDeduplicator.dedupe(dedupeKey, () =>
+            services.userService.getUserProfile(userId, username)
+        );
         return profile;
     }, {
         depends: [userId],
@@ -178,27 +195,37 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
         if (!currentUser) return { allChallenges: [], availableChallenges: [] };
 
         try {
-            // Check if user has subscribed (tracked in Redis)
-            try {
-                const subscriptionKey = `subscription:${userId}`;
-                const isSubscribed = await context.redis.get(subscriptionKey);
-                setIsMember(isSubscribed === 'true');
-            } catch (error) {
-                setIsMember(false);
-            }
+            // Parallel fetch of subscription status and rate limit check (Requirement 5.1)
+            const [subscriptionResult, rateLimitCheck, dbChallenges, userAttempts] = await Promise.all([
+                // Check if user has subscribed (tracked in Redis)
+                (async () => {
+                    try {
+                        const subscriptionKey = `subscription:${userId}`;
+                        const isSubscribed = await context.redis.get(subscriptionKey);
+                        return isSubscribed === 'true';
+                    } catch {
+                        return false;
+                    }
+                })(),
+                // Check rate limit
+                services.userService.canCreateChallenge(userId),
+                // Fetch challenges
+                services.challengeService.getChallenges(),
+                // OPTIMIZATION: Batch fetch all user attempts in single query (Requirement 5.2)
+                services.attemptService.getUserAttempts(userId),
+            ]);
 
-            const rateLimitCheck = await services.userService.canCreateChallenge(userId);
+            setIsMember(subscriptionResult);
             setCanCreateChallenge(rateLimitCheck.canCreate);
             setRateLimitTimeRemaining(rateLimitCheck.timeRemaining);
 
-            const dbChallenges = await services.challengeService.getChallenges();
             const gameChallenges = convertToGameChallenges(dbChallenges);
 
-            // Fetch avatars
+            // Fetch avatars using cached version (Requirement 5.3)
             await Promise.all(
                 gameChallenges.map(async (challenge) => {
                     try {
-                        const avatarUrl = await fetchAvatarUrl(context, challenge.creator_username);
+                        const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username);
                         if (avatarUrl) {
                             challenge.creator_avatar_url = avatarUrl;
                         }
@@ -209,8 +236,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             );
 
             // Filter out completed, game over, or user's own challenges
-            // OPTIMIZATION: Fetch all user attempts in one go
-            const userAttempts = await services.attemptService.getUserAttempts(userId);
+            // Use Map for O(1) lookup by challenge ID (Requirement 5.2)
             const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
 
             const available: GameChallenge[] = [];
@@ -240,6 +266,21 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                 setChallenges(data.allChallenges);
                 setAvailableChallenges(data.availableChallenges);
                 setChallengesLoaded(true);
+
+                // Trigger preload of next challenges after current loads (Requirement 2.1, 2.2)
+                if (data.availableChallenges.length > 0) {
+                    // Convert GameChallenge[] to Challenge[] for preload service
+                    const challengesForPreload = data.availableChallenges as unknown as Challenge[];
+                    services.preloadService.preloadNextChallenges(
+                        currentChallengeIndex,
+                        challengesForPreload,
+                        async (challenge) => {
+                            // Fetch avatar URL for preloaded challenges
+                            const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username || '');
+                            return { avatarUrl };
+                        }
+                    );
+                }
 
                 // If this post should open a specific challenge, find and set it
                 if (shouldOpenChallenge && postData?.challengeId && data.allChallenges.length > 0) {
@@ -283,11 +324,32 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
 
             // Move to next available challenge
             if (nextIndex < availableChallenges.length && availableChallenges[nextIndex]) {
+                // Check if next challenge is preloaded (Requirement 2.1)
+                const nextChallenge = availableChallenges[nextIndex];
+                const preloaded = services.preloadService.getPreloadedChallenge(nextChallenge.id);
+                
+                if (preloaded?.avatarUrl && !nextChallenge.creator_avatar_url) {
+                    // Use preloaded avatar URL
+                    nextChallenge.creator_avatar_url = preloaded.avatarUrl;
+                }
+                
                 setCurrentChallengeIndex(nextIndex);
+                
+                // Trigger preload for subsequent challenges (Requirement 2.2)
+                const challengesForPreload = availableChallenges as unknown as Challenge[];
+                services.preloadService.preloadNextChallenges(
+                    nextIndex,
+                    challengesForPreload,
+                    async (challenge) => {
+                        const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username || '');
+                        return { avatarUrl };
+                    }
+                );
+                
                 setIsLoadingNext(false);
             } else {
                 // Refresh available challenges to check if any new ones are available
-                // OPTIMIZATION: Fetch all user attempts in one go instead of N+1 requests
+                // OPTIMIZATION: Batch fetch all user attempts in single query (Requirement 5.2)
                 const userAttempts = await services.attemptService.getUserAttempts(userId);
                 const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
 
@@ -307,6 +369,20 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                 }
                 setAvailableChallenges(available);
                 setCurrentChallengeIndex(0);
+                
+                // Trigger preload for new available challenges
+                if (available.length > 0) {
+                    const challengesForPreload = available as unknown as Challenge[];
+                    services.preloadService.preloadNextChallenges(
+                        0,
+                        challengesForPreload,
+                        async (challenge) => {
+                            const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username || '');
+                            return { avatarUrl };
+                        }
+                    );
+                }
+                
                 setIsLoadingNext(false);
             }
         } catch (error) {
@@ -361,15 +437,21 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
 
         // Refresh data in the background while success screen is shown
         try {
-            // Refresh all challenges from database
-            const dbChallenges = await services.challengeService.getChallenges();
+            // Parallel fetch of challenges, user attempts, and rate limit (Requirement 5.1)
+            const [dbChallenges, userAttempts, newRateLimitCheck] = await Promise.all([
+                services.challengeService.getChallenges(),
+                // OPTIMIZATION: Batch fetch all user attempts in single query (Requirement 5.2)
+                services.attemptService.getUserAttempts(userId),
+                services.userService.canCreateChallenge(userId),
+            ]);
+
             const gameChallenges = convertToGameChallenges(dbChallenges);
 
-            // Fetch avatars for new challenges
+            // Fetch avatars for new challenges using cached version (Requirement 5.3)
             await Promise.all(
                 gameChallenges.map(async (challenge) => {
                     try {
-                        const avatarUrl = await fetchAvatarUrl(context, challenge.creator_username);
+                        const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username);
                         if (avatarUrl) {
                             challenge.creator_avatar_url = avatarUrl;
                         }
@@ -381,9 +463,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
 
             setChallenges(gameChallenges);
 
-            // Refresh available challenges (exclude own challenges)
-            // OPTIMIZATION: Fetch all user attempts in one go
-            const userAttempts = await services.attemptService.getUserAttempts(userId);
+            // Filter available challenges using Map for O(1) lookup (Requirement 5.2)
             const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
 
             const available: GameChallenge[] = [];
@@ -403,9 +483,11 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             setAvailableChallenges(available);
 
             // Update rate limit status
-            const newRateLimitCheck = await services.userService.canCreateChallenge(userId);
             setCanCreateChallenge(newRateLimitCheck.canCreate);
             setRateLimitTimeRemaining(newRateLimitCheck.timeRemaining);
+
+            // Clear preload cache since challenges have changed
+            services.preloadService.clearPreloadCache();
 
         } catch (error) {
             console.error('[Main] Error refreshing data after challenge creation:', error);
