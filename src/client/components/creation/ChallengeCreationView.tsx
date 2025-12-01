@@ -31,7 +31,7 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
     context
 ) => {
     const REQUIRED_LEVEL = 3;
-    
+
     // State: 'idle' | 'creating' | 'success' | 'error'
     const [status, setStatus] = useState<string>('idle');
     const [errorMessage, setErrorMessage] = useState<string>('');
@@ -248,9 +248,7 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 backgroundColor="#F6F7F8"
             >
                 <vstack alignment="center middle" gap="medium">
-                    <text style="heading" size="xxlarge">
-                        ✅
-                    </text>
+                    <image url="creator.png" imageWidth={64} imageHeight={64} width="64px" height="64px" resizeMode="fit" />
                     <text style="heading" size="xlarge" color="#FF4500">
                         Challenge Created!
                     </text>
@@ -325,9 +323,12 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
             backgroundColor="#F6F7F8"
         >
             <vstack alignment="center middle" gap="small" width="100%">
-                <text style="heading" size="xxlarge" color="#FF4500">
-                    ✨ Create Challenge
-                </text>
+                <hstack gap="small" alignment="middle">
+                    <image url="creator.png" imageWidth={32} imageHeight={32} width="32px" height="32px" resizeMode="fit" />
+                    <text style="heading" size="xxlarge" color="#FF4500">
+                        Create Challenge
+                    </text>
+                </hstack>
                 <text style="body" color="#878a8c" alignment="center">
                     Create a new image puzzle for others to solve
                 </text>

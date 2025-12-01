@@ -126,9 +126,12 @@ export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = (
         </button>
 
         {challengesCount === 0 && (
-          <text size="xsmall" color="#FF4500" alignment="center">
-            ⚠️ No challenges available. Create one first!
-          </text>
+          <hstack gap="small" alignment="center middle">
+            <image url="novice_solver.png" imageWidth={16} imageHeight={16} width="16px" height="16px" resizeMode="fit" />
+            <text size="xsmall" color="#FF4500" alignment="center">
+              No challenges available. Create one first!
+            </text>
+          </hstack>
         )}
       </vstack>
     </vstack>

@@ -482,6 +482,33 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
             }
         } else if (!challengesLoaded) {
             mainContent = <LoadingView />;
+        } else if (isLoadingNext) {
+            // Show loading screen while fetching next challenge
+            mainContent = (
+                <vstack
+                    alignment="center middle"
+                    padding="medium"
+                    gap="medium"
+                    width="100%"
+                    height="100%"
+                    backgroundColor="#F6F7F8"
+                >
+                    <image
+                        url="logo.png"
+                        imageHeight={100}
+                        imageWidth={240}
+                        resizeMode="fit"
+                    />
+                    <vstack gap="small" alignment="center middle">
+                        <text size="large" weight="bold" color="#1c1c1c">
+                            Loading Next Challenge...
+                        </text>
+                        <text size="medium" color="#878a8c">
+                            Finding a new puzzle for you
+                        </text>
+                    </vstack>
+                </vstack>
+            );
         } else if (availableChallenges.length === 0 || !currentChallenge) {
             mainContent = (
                 <AllCaughtUpView

@@ -118,9 +118,12 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
             <text size="medium" color="#FF4500" weight="bold">
               Level {profile.level}
             </text>
-            <text size="small" color="#878a8c">
-              • {profile.total_experience} XP
-            </text>
+            <hstack gap="small" alignment="middle">
+              <image url="exp.png" imageWidth={16} imageHeight={16} width="16px" height="16px" resizeMode="fit" />
+              <text size="small" color="#878a8c">
+                {profile.total_experience} XP
+              </text>
+            </hstack>
           </hstack>
 
           {/* XP Progress Bar */}
@@ -149,126 +152,152 @@ export const ProfileView: Devvit.BlockComponent<ProfileViewProps> = (
       {/* Stats Grid - Compact 2x2 */}
       <hstack gap="small" width="100%">
         {/* Points */}
-        <vstack
+        <hstack
           width="49%"
-          padding="small"
+          padding="medium"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
-          <text size="large">🏆</text>
-          <text size="xlarge" weight="bold" color="#FF4500">
-            {profile.total_points}
-          </text>
-          <text size="xsmall" color="#878a8c">Points</text>
-        </vstack>
+          <vstack alignment="center middle">
+            <image url="points.png" imageWidth={32} imageHeight={32} width="32px" height="32px" resizeMode="fit" />
+          </vstack>
+          <vstack alignment="center middle" gap="none">
+            <text size="xlarge" weight="bold" color="#FF4500">
+              {profile.total_points}
+            </text>
+            <text size="xsmall" color="#878a8c">Points</text>
+          </vstack>
+        </hstack>
 
         {/* Success Rate */}
-        <vstack
+        <hstack
           width="49%"
-          padding="small"
+          padding="medium"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
-          <text size="large">📊</text>
-          <text size="xlarge" weight="bold" color="#46D160">
-            {successRate}%
-          </text>
-          <text size="xsmall" color="#878a8c">Win Rate</text>
-        </vstack>
+          <vstack alignment="center middle">
+            <image url="expert_solver.png" imageWidth={32} imageHeight={32} width="32px" height="32px" resizeMode="fit" />
+          </vstack>
+          <vstack alignment="center middle" gap="none">
+            <text size="xlarge" weight="bold" color="#46D160">
+              {successRate}%
+            </text>
+            <text size="xsmall" color="#878a8c">Win Rate</text>
+          </vstack>
+        </hstack>
       </hstack>
 
       <hstack gap="small" width="100%">
         {/* Solved */}
-        <vstack
+        <hstack
           width="49%"
-          padding="small"
+          padding="medium"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
-          <text size="large">✅</text>
-          <text size="xlarge" weight="bold" color="#1c1c1c">
-            {profile.challenges_solved}
-          </text>
-          <text size="xsmall" color="#878a8c">Solved</text>
-        </vstack>
+          <vstack alignment="center middle">
+            <image url="novice_solver.png" imageWidth={32} imageHeight={32} width="32px" height="32px" resizeMode="fit" />
+          </vstack>
+          <vstack alignment="center middle" gap="none">
+            <text size="xlarge" weight="bold" color="#1c1c1c">
+              {profile.challenges_solved}
+            </text>
+            <text size="xsmall" color="#878a8c">Solved</text>
+          </vstack>
+        </hstack>
 
         {/* Created */}
-        <vstack
+        <hstack
           width="49%"
-          padding="small"
+          padding="medium"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
-          <text size="large">✨</text>
-          <text size="xlarge" weight="bold" color="#1c1c1c">
-            {profile.challenges_created}
-          </text>
-          <text size="xsmall" color="#878a8c">Created</text>
-        </vstack>
+          <vstack alignment="center middle">
+            <image url="creator.png" imageWidth={32} imageHeight={32} width="32px" height="32px" resizeMode="fit" />
+          </vstack>
+          <vstack alignment="center middle" gap="none">
+            <text size="xlarge" weight="bold" color="#1c1c1c">
+              {profile.challenges_created}
+            </text>
+            <text size="xsmall" color="#878a8c">Created</text>
+          </vstack>
+        </hstack>
       </hstack>
 
       {/* Streak Stats Row */}
       <hstack gap="small" width="100%">
         {/* Current Streak */}
-        <vstack
+        <hstack
           width="49%"
-          padding="small"
+          padding="medium"
           gap="small"
           backgroundColor={profile.current_streak > 0 ? "#FFF8E1" : "#FFFFFF"}
           cornerRadius="medium"
           alignment="center middle"
         >
-          <text size="large">🔥</text>
-          <text size="xlarge" weight="bold" color={profile.current_streak > 0 ? "#F57C00" : "#1c1c1c"}>
-            {profile.current_streak || 0}
-          </text>
-          <text size="xsmall" color="#878a8c">Current Streak</text>
-        </vstack>
+          <vstack alignment="center middle">
+            <image url="streak_master.png" imageWidth={32} imageHeight={32} width="32px" height="32px" resizeMode="fit" />
+          </vstack>
+          <vstack alignment="center middle" gap="none">
+            <text size="xlarge" weight="bold" color={profile.current_streak > 0 ? "#F57C00" : "#1c1c1c"}>
+              {profile.current_streak || 0}
+            </text>
+            <text size="xsmall" color="#878a8c">Streak</text>
+          </vstack>
+        </hstack>
 
         {/* Best Streak */}
-        <vstack
+        <hstack
           width="49%"
-          padding="small"
+          padding="medium"
           gap="small"
           backgroundColor="#FFFFFF"
           cornerRadius="medium"
           alignment="center middle"
         >
-          <text size="large">⭐</text>
-          <text size="xlarge" weight="bold" color="#1c1c1c">
-            {profile.best_streak || 0}
-          </text>
-          <text size="xsmall" color="#878a8c">Best Streak</text>
-        </vstack>
+          <vstack alignment="center middle">
+            <image url="rising_star.png" imageWidth={32} imageHeight={32} width="32px" height="32px" resizeMode="fit" />
+          </vstack>
+          <vstack alignment="center middle" gap="none">
+            <text size="xlarge" weight="bold" color="#1c1c1c">
+              {profile.best_streak || 0}
+            </text>
+            <text size="xsmall" color="#878a8c">Best</text>
+          </vstack>
+        </hstack>
       </hstack>
 
       {/* Total Attempted - Full Width */}
-      <vstack
-        padding="small"
+      <hstack
+        padding="medium"
         gap="small"
         backgroundColor="#FFFFFF"
         cornerRadius="medium"
         alignment="center middle"
         width="100%"
       >
-        <hstack gap="small" alignment="center middle">
-          <text size="medium">🎮</text>
-          <text size="medium" weight="bold" color="#1c1c1c">
+        <vstack alignment="center middle">
+          <image url="total_attempted.png" imageWidth={32} imageHeight={32} width="32px" height="32px" resizeMode="fit" />
+        </vstack>
+        <vstack alignment="center middle" gap="none">
+          <text size="xlarge" weight="bold" color="#1c1c1c">
             {profile.challenges_attempted}
           </text>
-          <text size="small" color="#878a8c">
-            Total Challenges Attempted
+          <text size="xsmall" color="#878a8c">
+            Total Attempted
           </text>
-        </hstack>
-      </vstack>
+        </vstack>
+      </hstack>
 
       {/* Note: Refresh happens automatically via cache TTL (5 minutes) */}
       <text size="xsmall" color="#878a8c" alignment="center">

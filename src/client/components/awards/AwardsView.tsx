@@ -26,7 +26,7 @@ const BADGES: Badge[] = [
         id: 'novice_solver',
         name: 'Novice Solver',
         description: 'Solve your first challenge',
-        icon: '🧩',
+        icon: 'novice_solver.png',
         color: '#4CAF50',
         condition: (p) => p.challenges_solved >= 1,
         progress: (p) => Math.min(p.challenges_solved / 1, 1),
@@ -36,7 +36,7 @@ const BADGES: Badge[] = [
         id: 'expert_solver',
         name: 'Expert Solver',
         description: 'Solve 50 challenges',
-        icon: '🧠',
+        icon: 'expert_solver.png',
         color: '#2196F3',
         condition: (p) => p.challenges_solved >= 50,
         progress: (p) => Math.min(p.challenges_solved / 50, 1),
@@ -46,7 +46,7 @@ const BADGES: Badge[] = [
         id: 'creator',
         name: 'Creator',
         description: 'Create a challenge',
-        icon: '🎨',
+        icon: 'creator.png',
         color: '#9C27B0',
         condition: (p) => p.challenges_created >= 1,
         progress: (p) => Math.min(p.challenges_created / 1, 1),
@@ -56,7 +56,7 @@ const BADGES: Badge[] = [
         id: 'master_creator',
         name: 'Master Creator',
         description: 'Create 10 challenges',
-        icon: '🎭',
+        icon: 'master_creator.png',
         color: '#673AB7',
         condition: (p) => p.challenges_created >= 10,
         progress: (p) => Math.min(p.challenges_created / 10, 1),
@@ -66,7 +66,7 @@ const BADGES: Badge[] = [
         id: 'streak_master',
         name: 'Streak Master',
         description: 'Reach a streak of 5',
-        icon: '🔥',
+        icon: 'streak_master.png',
         color: '#FF5722',
         condition: (p) => (p.best_streak || 0) >= 5,
         progress: (p) => Math.min((p.best_streak || 0) / 5, 1),
@@ -76,7 +76,7 @@ const BADGES: Badge[] = [
         id: 'point_millionaire',
         name: 'High Roller',
         description: 'Earn 1000 points',
-        icon: '💎',
+        icon: 'high_roller.png',
         color: '#00BCD4',
         condition: (p) => p.total_points >= 1000,
         progress: (p) => Math.min(p.total_points / 1000, 1),
@@ -86,7 +86,7 @@ const BADGES: Badge[] = [
         id: 'level_5',
         name: 'Rising Star',
         description: 'Reach Level 5',
-        icon: '⭐',
+        icon: 'rising_star.png',
         color: '#FFC107',
         condition: (p) => p.level >= 5,
         progress: (p) => Math.min(p.level / 5, 1),
@@ -245,7 +245,14 @@ const BadgeItem = ({ badge, profile, isEmpty }: { badge?: Badge; profile: UserPr
                 backgroundColor={isUnlocked ? badge.color : '#EEEEEE'}
                 alignment="center middle"
             >
-                <text size="xxlarge">{badge.icon}</text>
+                <image
+                    url={badge.icon}
+                    imageWidth={32}
+                    imageHeight={32}
+                    width="32px"
+                    height="32px"
+                    resizeMode="fit"
+                />
             </vstack>
 
             <text size="medium" weight="bold" color={isUnlocked ? '#1c1c1c' : '#878a8c'} alignment="center">{badge.name}</text>
