@@ -1,4 +1,5 @@
 import { Devvit } from '@devvit/public-api';
+import { BG_SECONDARY } from '../../constants/colors.js';
 
 export interface RewardNotificationProps {
   type: 'points' | 'experience' | 'level_up' | 'challenge_created' | 'challenge_solved' | 'comment';
@@ -19,11 +20,13 @@ export const RewardNotification: Devvit.BlockComponent<RewardNotificationProps> 
 }) => {
 
   // Achievement configuration based on type
+  // Uses custom icons where available, emoji fallback for others
   const getAchievementConfig = () => {
     switch (type) {
       case 'level_up':
         return {
-          icon: '🎉',
+          icon: 'rising_star.png',
+          isCustomIcon: true,
           title: 'Level Up!',
           subtitle: `You reached Level ${level}!`,
           color: '#FFD700',
@@ -33,7 +36,8 @@ export const RewardNotification: Devvit.BlockComponent<RewardNotificationProps> 
         };
       case 'challenge_solved':
         return {
-          icon: '🏆',
+          icon: 'novice_solver.png',
+          isCustomIcon: true,
           title: 'Challenge Solved!',
           subtitle: 'You cracked the puzzle!',
           color: '#00C853',
@@ -43,7 +47,8 @@ export const RewardNotification: Devvit.BlockComponent<RewardNotificationProps> 
         };
       case 'challenge_created':
         return {
-          icon: '✨',
+          icon: 'creator.png',
+          isCustomIcon: true,
           title: 'Challenge Created!',
           subtitle: 'Your puzzle is live!',
           color: '#2962FF',
@@ -54,6 +59,7 @@ export const RewardNotification: Devvit.BlockComponent<RewardNotificationProps> 
       case 'comment':
         return {
           icon: '💬',
+          isCustomIcon: false,
           title: 'Comment Bonus!',
           subtitle: 'Thanks for engaging!',
           color: '#9C27B0',
@@ -63,7 +69,8 @@ export const RewardNotification: Devvit.BlockComponent<RewardNotificationProps> 
         };
       default:
         return {
-          icon: '🎁',
+          icon: 'high_roller.png',
+          isCustomIcon: true,
           title: 'Reward Earned!',
           subtitle: 'Keep up the great work!',
           color: '#FF6D00',
@@ -116,7 +123,18 @@ export const RewardNotification: Devvit.BlockComponent<RewardNotificationProps> 
           backgroundColor={config.color}
           alignment="center middle"
         >
-          <text size="xxlarge">{config.icon}</text>
+          {config.isCustomIcon ? (
+            <image
+              url={config.icon}
+              imageWidth={48}
+              imageHeight={48}
+              width="48px"
+              height="48px"
+              resizeMode="fit"
+            />
+          ) : (
+            <text size="xxlarge">{config.icon}</text>
+          )}
         </vstack>
 
         <vstack alignment="center middle" gap="small" width="100%">
@@ -136,7 +154,7 @@ export const RewardNotification: Devvit.BlockComponent<RewardNotificationProps> 
 
         <vstack
           width="100%"
-          backgroundColor="white"
+          backgroundColor={BG_SECONDARY}
           cornerRadius="medium"
           padding="small"
           gap="small"
@@ -156,7 +174,14 @@ export const RewardNotification: Devvit.BlockComponent<RewardNotificationProps> 
                 border="thin"
                 borderColor="#FFD54F"
               >
-                <text size="large">💎</text>
+                <image
+                  url="points.png"
+                  imageWidth={28}
+                  imageHeight={28}
+                  width="28px"
+                  height="28px"
+                  resizeMode="fit"
+                />
                 <vstack alignment="start middle">
                   <text size="large" weight="bold" color="#F57F17">
                     +{points}
@@ -178,7 +203,14 @@ export const RewardNotification: Devvit.BlockComponent<RewardNotificationProps> 
                 border="thin"
                 borderColor="#81C784"
               >
-                <text size="large">⚡</text>
+                <image
+                  url="exp.png"
+                  imageWidth={28}
+                  imageHeight={28}
+                  width="28px"
+                  height="28px"
+                  resizeMode="fit"
+                />
                 <vstack alignment="start middle">
                   <text size="large" weight="bold" color="#2E7D32">
                     +{experience}

@@ -34,7 +34,7 @@ export function generateGameplayHTML(props: GameplayWebviewProps): string {
     
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #F6F7F8;
+      background: #FFF8F0;
       padding: 16px;
       min-height: 100vh;
       display: flex;
@@ -158,9 +158,9 @@ export function generateGameplayHTML(props: GameplayWebviewProps): string {
       width: 100%;
       padding: 14px;
       font-size: 16px;
-      border: 2px solid #E0E0E0;
+      border: 2px solid #E8E0D8;
       border-radius: 8px;
-      background: #F6F7F8;
+      background: #FFF8F0;
       color: #1c1c1c;
       outline: none;
       transition: border-color 0.2s;

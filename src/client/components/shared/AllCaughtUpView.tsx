@@ -4,6 +4,7 @@
  */
 
 import { Devvit } from '@devvit/public-api';
+import { BG_PRIMARY } from '../../constants/colors.js';
 
 export interface AllCaughtUpViewProps {
   onBackToMenu: () => void;
@@ -25,7 +26,7 @@ export const AllCaughtUpView: Devvit.BlockComponent<AllCaughtUpViewProps> = ({
       width="100%"
       height="100%"
       alignment="center middle"
-      backgroundColor="#F6F7F8"
+      backgroundColor={BG_PRIMARY}
       padding="large"
       gap="large"
     >

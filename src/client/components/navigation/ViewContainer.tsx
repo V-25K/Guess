@@ -4,6 +4,7 @@
  */
 
 import { Devvit } from '@devvit/public-api';
+import { BG_PRIMARY } from '../../constants/colors.js';
 import type { ViewType } from '../../hooks/useNavigation.js';
 
 export interface ViewContainerProps {
@@ -19,7 +20,7 @@ export const ViewContainer: Devvit.BlockComponent<ViewContainerProps> = (
       width="100%" 
       height="100%" 
       grow 
-      backgroundColor="#F6F7F8"
+      backgroundColor={BG_PRIMARY}
     >
       {children}
     </vstack>

@@ -19,6 +19,23 @@ export type LeaderboardEntry = {
   isCurrentUser: boolean;
 };
 
+export type UserRankData = {
+  rank: number | null;
+  username: string;
+  totalPoints: number;
+  level: number;
+};
+
+export type PaginatedLeaderboardResult = {
+  entries: LeaderboardEntry[];
+  userRank: UserRankData | null;
+  totalEntries: number;
+  totalPages: number;
+  currentPage: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+};
+
 // Redis sorted set key for leaderboard
 const LEADERBOARD_KEY = 'leaderboard:points';
 
@@ -77,6 +94,35 @@ export class LeaderboardService extends BaseService {
     }
   }
 
+  /**
+   * Get total player count from Redis sorted set using zCard
+   * Returns total count for pagination calculation
+   * Falls back to database if Redis is empty or fails
+   * Requirements: 1.2
+   */
+  async getTotalPlayerCount(): Promise<number> {
+    try {
+      const count = await this.redis.zCard(LEADERBOARD_KEY);
+      // If Redis has data, return it
+      if (count > 0) {
+        return count;
+      }
+      // Redis is empty - fall back to database
+      const users = await this.userRepo.findByPoints(1000, 0);
+      return users.length;
+    } catch (error) {
+      this.logError('LeaderboardService.getTotalPlayerCount', error);
+      // Fall back to database count on error
+      try {
+        const users = await this.userRepo.findByPoints(1000, 0);
+        return users.length;
+      } catch (dbError) {
+        this.logError('LeaderboardService.getTotalPlayerCount.fallback', dbError);
+        return 0;
+      }
+    }
+  }
+
 
   /**
    * Get top N players sorted by total points (descending)
@@ -92,7 +138,7 @@ export class LeaderboardService extends BaseService {
       if (entries.length > 0) {
         return entries;
       }
-      
+
       // Fall back to database if Redis returns empty (might not be populated yet)
       return await this.getTopPlayersFromDatabase(limit, offset);
     } catch (error) {
@@ -106,15 +152,16 @@ export class LeaderboardService extends BaseService {
   /**
    * Get top players from Redis sorted set
    * Uses zRange with { by: 'rank', reverse: true } for descending order
+   * Implements standard competition ranking (1224) - ties share rank, next rank skips
    */
   private async getTopPlayersFromRedis(limit: number, offset: number): Promise<LeaderboardEntry[]> {
     // Get top players from sorted set in descending order (highest scores first)
     const start = offset;
     const end = offset + limit - 1;
-    
-    const members = await this.redis.zRange(LEADERBOARD_KEY, start, end, { 
-      by: 'rank', 
-      reverse: true 
+
+    const members = await this.redis.zRange(LEADERBOARD_KEY, start, end, {
+      by: 'rank',
+      reverse: true
     });
 
     if (!members || members.length === 0) {
@@ -127,13 +174,17 @@ export class LeaderboardService extends BaseService {
       const member = members[i];
       const userId = member.member;
       const score = member.score;
-      
+
       // Get user profile for additional details
       const userProfile = await this.userRepo.findById(userId);
-      
+
       if (userProfile) {
+        // Calculate proper rank using standard competition ranking
+        // Count how many players have a higher score than this player
+        const rank = await this.getCompetitionRank(score);
+        
         entries.push({
-          rank: offset + i + 1, // 1-indexed rank
+          rank: rank,
           userId: userProfile.user_id,
           username: userProfile.username,
           totalPoints: score,
@@ -148,21 +199,55 @@ export class LeaderboardService extends BaseService {
   }
 
   /**
+   * Get competition rank for a given score
+   * Standard competition ranking: rank = 1 + count of players with higher score
+   * Players with same score share the same rank
+   */
+  private async getCompetitionRank(score: number): Promise<number> {
+    try {
+      // Use zRange with by: 'score' to get players with scores strictly greater than this score
+      // We use score + 0.001 as the lower bound to exclude exact matches (exclusive)
+      const playersWithHigherScore = await this.redis.zRange(
+        LEADERBOARD_KEY,
+        score + 0.001, // Exclusive: scores strictly greater than this
+        '+inf',
+        { by: 'score' }
+      );
+      
+      // Rank = 1 + number of players with higher score
+      return (playersWithHigherScore?.length || 0) + 1;
+    } catch (error) {
+      this.logError('LeaderboardService.getCompetitionRank', error);
+      return 1; // Default to rank 1 on error
+    }
+  }
+
+  /**
    * Fallback: Get top players from database
    * Used when Redis is unavailable (Requirements: 7.1)
+   * Implements standard competition ranking (1224) - ties share rank
    */
   private async getTopPlayersFromDatabase(limit: number, offset: number): Promise<LeaderboardEntry[]> {
     const users = await this.userRepo.findByPoints(limit, offset);
-
-    return users.map((user, index) => ({
-      rank: offset + index + 1,
-      userId: user.user_id,
-      username: user.username,
-      totalPoints: user.total_points,
-      level: user.level,
-      challengesSolved: user.challenges_solved,
-      isCurrentUser: false,
-    }));
+    
+    // Get all users to calculate proper competition ranks
+    const allUsers = await this.userRepo.findByPoints(1000, 0);
+    
+    return users.map((user) => {
+      // Count players with higher points for competition ranking
+      const playersWithHigherScore = allUsers.filter(u => u.total_points > user.total_points).length;
+      const rank = playersWithHigherScore + 1;
+      
+      return {
+        rank,
+        userId: user.user_id,
+        username: user.username,
+        totalPoints: user.total_points,
+        level: user.level,
+        challengesSolved: user.challenges_solved,
+        isCurrentUser: false,
+      };
+    });
   }
 
   /**
@@ -179,7 +264,7 @@ export class LeaderboardService extends BaseService {
       if (rank !== null) {
         return rank;
       }
-      
+
       // Fall back to database
       return await this.userRepo.getUserRank(userId);
     } catch (error) {
@@ -191,35 +276,21 @@ export class LeaderboardService extends BaseService {
   }
 
   /**
-   * Get user rank from Redis sorted set
-   * Since zRank returns 0-indexed rank for ascending order,
-   * we need to calculate: totalCount - zRank to get descending rank,
-   * then add 1 for 1-indexed result
+   * Get user rank from Redis sorted set using competition ranking
+   * Standard competition ranking: rank = 1 + count of players with higher score
+   * Players with same score share the same rank
    * Requirements: 9.3
    */
   private async getUserRankFromRedis(userId: string): Promise<number | null> {
-    // Get the 0-indexed rank (ascending order - lowest score = rank 0)
-    const ascendingRank = await this.redis.zRank(LEADERBOARD_KEY, userId);
-    
-    if (ascendingRank === null || ascendingRank === undefined) {
+    // Get the user's score first
+    const userScore = await this.redis.zScore(LEADERBOARD_KEY, userId);
+
+    if (userScore === null || userScore === undefined) {
       return null;
     }
 
-    // Get total count to calculate descending rank
-    const totalCount = await this.redis.zCard(LEADERBOARD_KEY);
-    
-    if (totalCount === 0) {
-      return null;
-    }
-
-    // Convert to descending rank (highest score = rank 1)
-    // ascendingRank 0 = lowest score, should be rank totalCount
-    // ascendingRank (totalCount-1) = highest score, should be rank 1
-    // Formula: descendingRank = totalCount - ascendingRank
-    // Then add 0 since we want 1-indexed (the formula already gives 1-indexed)
-    const descendingRank = totalCount - ascendingRank;
-    
-    return descendingRank;
+    // Use competition ranking: count players with higher score + 1
+    return await this.getCompetitionRank(userScore);
   }
 
 
@@ -245,15 +316,15 @@ export class LeaderboardService extends BaseService {
   async refreshLeaderboard(): Promise<void> {
     try {
       this.logInfo('LeaderboardService', 'Refreshing leaderboard from database');
-      
+
       // Get all users with points from database
       const users = await this.userRepo.findByPoints(1000, 0);
-      
+
       // Add each user to the sorted set
       for (const user of users) {
-        await this.redis.zAdd(LEADERBOARD_KEY, { 
-          member: user.user_id, 
-          score: user.total_points 
+        await this.redis.zAdd(LEADERBOARD_KEY, {
+          member: user.user_id,
+          score: user.total_points
         });
       }
 
@@ -309,6 +380,68 @@ export class LeaderboardService extends BaseService {
   }
 
   /**
+   * Get leaderboard with pagination metadata and current user's rank
+   * Returns paginated entries with totalEntries, totalPages, hasNextPage, hasPreviousPage
+   * Requirements: 1.2, 2.1
+   */
+  async getLeaderboardWithUserPaginated(
+    userId: string,
+    pageSize: number = 5,
+    currentPage: number = 0
+  ): Promise<PaginatedLeaderboardResult> {
+    try {
+      const offset = currentPage * pageSize;
+
+      // Get total entries for pagination calculation
+      const totalEntries = await this.getTotalPlayerCount();
+      const totalPages = totalEntries > 0 ? Math.ceil(totalEntries / pageSize) : 0;
+
+      // Get paginated entries
+      const topPlayers = await this.getTopPlayers(pageSize, offset);
+
+      const entries = topPlayers.map(entry => ({
+        ...entry,
+        isCurrentUser: entry.userId === userId,
+      }));
+
+      // Get user's rank data (always fetch for Your Rank Section)
+      let userRank: UserRankData | null = null;
+      const userProfile = await this.userRepo.findById(userId);
+      const rank = await this.getUserRank(userId);
+
+      if (userProfile) {
+        userRank = {
+          rank: rank,
+          username: userProfile.username,
+          totalPoints: userProfile.total_points,
+          level: userProfile.level,
+        };
+      }
+
+      return {
+        entries,
+        userRank,
+        totalEntries,
+        totalPages,
+        currentPage,
+        hasNextPage: currentPage < totalPages - 1,
+        hasPreviousPage: currentPage > 0,
+      };
+    } catch (error) {
+      this.logError('LeaderboardService.getLeaderboardWithUserPaginated', error);
+      return {
+        entries: [],
+        userRank: null,
+        totalEntries: 0,
+        totalPages: 0,
+        currentPage: 0,
+        hasNextPage: false,
+        hasPreviousPage: false,
+      };
+    }
+  }
+
+  /**
    * Get leaderboard statistics
    */
   async getLeaderboardStats(): Promise<{
@@ -319,7 +452,7 @@ export class LeaderboardService extends BaseService {
     try {
       // Get total players from sorted set
       const totalPlayers = await this.redis.zCard(LEADERBOARD_KEY);
-      
+
       // Get top player's score
       const topPlayers = await this.getTopPlayers(1, 0);
       const topScore = topPlayers.length > 0 ? topPlayers[0].totalPoints : 0;

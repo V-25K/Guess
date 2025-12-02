@@ -18,6 +18,7 @@ import { AttemptRepository } from '../../../server/repositories/attempt.reposito
 import { ChallengeRepository } from '../../../server/repositories/challenge.repository.js';
 import { UserRepository } from '../../../server/repositories/user.repository.js';
 import { calculatePotentialScore } from '../../../shared/utils/reward-calculator.js';
+import { BG_PRIMARY } from '../../constants/colors.js';
 
 export interface GameplayViewWrapperProps {
   userId: string;
@@ -164,55 +165,68 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     {
       depends: [submittedGuess],
       finally: (result) => {
-        if (result) {
-          // Update game state with attempt tracking data
-          setGameState(prev => {
-            // Check if this was the first attempt (attemptsRemaining went from 10 to 9)
-            // If so, increment uniquePlayerCount
-            const isFirstAttempt = prev.attemptsRemaining === 10 && result.attemptsRemaining < 10;
+        // Always reset submittedGuess to allow re-submission
+        // This ensures the useAsync can be triggered again for the next guess
+        setSubmittedGuess(null);
 
-            // Build reward message with bonuses
-            let rewardMessage = '';
-            if (result.isCorrect && result.reward) {
-              const bonuses = result.reward.bonuses || [];
-              const bonusLabels = bonuses.map(b => b.label).join(' ');
-              const totalPoints = result.reward.totalPoints || result.reward.points || 0;
-              rewardMessage = `+${totalPoints} points!${bonusLabels ? ' ' + bonusLabels : ''}`;
-
-              // Trigger reward notification
-              if (onReward) {
-                onReward({
-                  type: 'challenge_solved',
-                  points: result.reward.points,
-                  experience: result.reward.experience,
-                  level: 0, // Level handled by separate check usually, or we could pass it if available
-                  message: rewardMessage,
-                  bonuses: bonuses,
-                  totalPoints: totalPoints,
-                });
-              }
-            }
-
-            return {
+        // Handle case where result is null/undefined (error occurred)
+        if (!result) {
+          // Only update if we were actually processing (submittedGuess was set)
+          if (submittedGuess) {
+            setGameState(prev => ({
               ...prev,
-              attemptCount: 10 - result.attemptsRemaining,
-              attemptsRemaining: result.attemptsRemaining,
-              potentialScore: result.potentialScore,
-              message: result.isCorrect
-                ? rewardMessage
-                : result.explanation,
-              isGameOver: result.gameOver,
-              isCorrect: result.isCorrect,
-              playersCompleted: result.isCorrect
-                ? (prev.playersCompleted || 0) + 1
-                : prev.playersCompleted,
-              uniquePlayerCount: isFirstAttempt
-                ? (prev.uniquePlayerCount || 0) + 1
-                : prev.uniquePlayerCount,
-              bonuses: result.reward?.bonuses || [],
-            };
-          });
+              message: 'Something went wrong. Please try again.',
+            }));
+          }
+          return;
         }
+
+        // Update game state with attempt tracking data
+        setGameState(prev => {
+          // Check if this was the first attempt (attemptsRemaining went from 10 to 9)
+          // If so, increment uniquePlayerCount
+          const isFirstAttempt = prev.attemptsRemaining === 10 && result.attemptsRemaining < 10;
+
+          // Build reward message (bonuses shown separately in UI)
+          let rewardMessage = '';
+          const bonuses = result.reward?.bonuses || [];
+          if (result.isCorrect && result.reward) {
+            const totalPoints = result.reward.totalPoints || result.reward.points || 0;
+            rewardMessage = `+${totalPoints} points!`;
+
+            // Trigger reward notification
+            if (onReward) {
+              onReward({
+                type: 'challenge_solved',
+                points: result.reward.points,
+                experience: result.reward.experience,
+                level: 0, // Level handled by separate check usually, or we could pass it if available
+                message: rewardMessage,
+                bonuses: bonuses,
+                totalPoints: totalPoints,
+              });
+            }
+          }
+
+          return {
+            ...prev,
+            attemptCount: 10 - result.attemptsRemaining,
+            attemptsRemaining: result.attemptsRemaining,
+            potentialScore: result.potentialScore,
+            message: result.isCorrect
+              ? rewardMessage
+              : result.explanation,
+            isGameOver: result.gameOver,
+            isCorrect: result.isCorrect,
+            playersCompleted: result.isCorrect
+              ? (prev.playersCompleted || 0) + 1
+              : prev.playersCompleted,
+            uniquePlayerCount: isFirstAttempt
+              ? (prev.uniquePlayerCount || 0) + 1
+              : prev.uniquePlayerCount,
+            bonuses: result.reward?.bonuses || [],
+          };
+        });
       }
     }
   );
@@ -271,7 +285,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
         gap="medium"
         width="100%"
         height="100%"
-        backgroundColor="#F6F7F8"
+        backgroundColor={BG_PRIMARY}
       >
         <image
           url="logo.png"
@@ -299,7 +313,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
         gap="medium"
         width="100%"
         height="100%"
-        backgroundColor="#F6F7F8"
+        backgroundColor={BG_PRIMARY}
       >
         <text size="large" color="#FF4500">
           📭 No Challenges Available

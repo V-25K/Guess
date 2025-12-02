@@ -4,6 +4,7 @@
  */
 
 import { Devvit } from '@devvit/public-api';
+import { BG_PRIMARY } from '../../constants/colors.js';
 
 export interface ErrorBoundaryProps {
   children: JSX.Element | JSX.Element[];
@@ -52,7 +53,7 @@ export const ErrorBoundary: Devvit.BlockComponent<ErrorBoundaryProps> = (
     }
 
     return (
-      <vstack padding="large" gap="large" alignment="center middle" grow backgroundColor="#F6F7F8">
+      <vstack padding="large" gap="large" alignment="center middle" grow backgroundColor={BG_PRIMARY}>
         <image
           url="logo.png"
           imageHeight={80}

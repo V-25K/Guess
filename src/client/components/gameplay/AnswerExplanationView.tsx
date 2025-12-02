@@ -5,6 +5,7 @@
 
 import { Devvit, useState } from '@devvit/public-api';
 import type { GameChallenge } from '../../../shared/models/index.js';
+import { BG_PRIMARY } from '../../constants/colors.js';
 
 export interface AnswerExplanationViewProps {
     challenge: GameChallenge;
@@ -34,7 +35,7 @@ export const AnswerExplanationView: Devvit.BlockComponent<AnswerExplanationViewP
     const isLastImage = currentImageIndex === challenge.images.length - 1;
 
     return (
-        <vstack padding="small" gap="small" width="100%" height="100%" backgroundColor="#F6F7F8">
+        <vstack padding="small" gap="small" width="100%" height="100%" backgroundColor={BG_PRIMARY}>
             {/* Compact Header */}
             <hstack width="100%" alignment="middle" gap="small">
                 <button
@@ -130,7 +131,7 @@ export const AnswerExplanationView: Devvit.BlockComponent<AnswerExplanationViewP
                 <vstack
                     width="100%"
                     padding="small"
-                    backgroundColor="#F6F7F8"
+                    backgroundColor={BG_PRIMARY}
                     cornerRadius="small"
                 >
                     <text size="small" color="#666666" wrap alignment="center">

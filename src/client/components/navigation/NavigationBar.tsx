@@ -25,35 +25,35 @@ export const NavigationBar: Devvit.BlockComponent<NavigationBarProps> = (
       borderColor="#E0E0E0"
     >
       <button
+        icon='menu'
         appearance={isActive('menu') ? 'primary' : 'secondary'}
         size="small"
         onPress={() => onNavigate('menu')}
       >
-        🏠 Menu
       </button>
 
       <button
+        icon='profile'
         appearance={isActive('profile') ? 'primary' : 'secondary'}
         size="small"
         onPress={() => onNavigate('profile')}
       >
-        👤 Profile
       </button>
 
       <button
+        icon='contest'
         appearance={isActive('leaderboard') ? 'primary' : 'secondary'}
         size="small"
         onPress={() => onNavigate('leaderboard')}
       >
-        🏆 Leaderboard
       </button>
 
       <button
+        icon='award'
         appearance={isActive('awards') ? 'primary' : 'secondary'}
         size="small"
         onPress={() => onNavigate('awards')}
       >
-        🏅 Awards
       </button>
     </hstack>
   );

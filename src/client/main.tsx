@@ -44,7 +44,11 @@ import { AwardsView } from './components/awards/AwardsView.js';
 import { convertToGameChallenges } from '../shared/utils/challenge-utils.js';
 import { fetchAvatarUrlCached } from '../server/utils/challenge-utils.js';
 
+import { BG_PRIMARY } from './constants/colors.js';
+
 import type { GameChallenge, Challenge } from '../shared/models/challenge.types.js';
+import type { UserProfile } from '../shared/models/user.types.js';
+import type { PaginatedLeaderboardResult } from '../server/services/leaderboard.service.js';
 
 /**
  * Initialize all services with dependency injection
@@ -117,7 +121,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     // Handle user authentication errors or missing user
     if (userError || !currentUser) {
         return (
-            <vstack alignment="center middle" padding="large" gap="large" width="100%" height="100%" backgroundColor="#F6F7F8">
+            <vstack alignment="center middle" padding="large" gap="large" width="100%" height="100%" backgroundColor={BG_PRIMARY}>
                 <image
                     url="logo.png"
                     imageHeight={100}
@@ -165,6 +169,12 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     });
     const [userLevel, setUserLevel] = useState(0);
     const [isModerator, setIsModerator] = useState(false);
+
+    // Client-side cache for instant page loads (stale-while-revalidate pattern)
+    const [cachedProfile, setCachedProfile] = useState<UserProfile | null>(null);
+    const [cachedLeaderboard, setCachedLeaderboard] = useState<PaginatedLeaderboardResult | null>(null);
+    const [cachedAvatarUrl, setCachedAvatarUrl] = useState<string | null>(null);
+    // Awards uses the same profile data, so cachedProfile serves both ProfileView and AwardsView
 
     // Load user profile separately to ensure state updates work
     // Uses request deduplication to prevent duplicate fetches (Requirement 4.3)
@@ -573,7 +583,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                     gap="medium"
                     width="100%"
                     height="100%"
-                    backgroundColor="#F6F7F8"
+                    backgroundColor={BG_PRIMARY}
                 >
                     <image
                         url="logo.png"
@@ -639,6 +649,10 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                                     userId={userId}
                                     username={username}
                                     userService={services.userService}
+                                    cachedProfile={cachedProfile}
+                                    onProfileLoaded={setCachedProfile}
+                                    cachedAvatarUrl={cachedAvatarUrl}
+                                    onAvatarLoaded={setCachedAvatarUrl}
                                 />
                             </ErrorBoundary>
                         )}
@@ -650,6 +664,8 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                                 <LeaderboardView
                                     userId={userId}
                                     leaderboardService={services.leaderboardService}
+                                    cachedData={cachedLeaderboard}
+                                    onDataLoaded={setCachedLeaderboard}
                                 />
                             </ErrorBoundary>
                         )}
@@ -671,6 +687,8 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                                     username={username}
                                     userService={services.userService}
                                     onBack={() => navigateTo('menu')}
+                                    cachedProfile={cachedProfile}
+                                    onProfileLoaded={setCachedProfile}
                                 />
                             </ErrorBoundary>
                         )}
@@ -777,7 +795,7 @@ Devvit.addMenuItem({
                 title: '🎮 Play Now!',
                 subredditName: subreddit.name,
                 preview: (
-                    <vstack height="100%" width="100%" alignment="middle center" gap="medium" backgroundColor="#F6F7F8">
+                    <vstack height="100%" width="100%" alignment="middle center" gap="medium" backgroundColor={BG_PRIMARY}>
                         <image
                             url="logo.png"
                             imageHeight={100}

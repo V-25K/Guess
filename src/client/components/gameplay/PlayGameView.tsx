@@ -6,6 +6,29 @@
 import { Devvit, useState } from '@devvit/public-api';
 import type { GameChallenge } from '../../../shared/models/index.js';
 import { AnswerExplanationView } from './AnswerExplanationView.js';
+import { BG_PRIMARY } from '../../constants/colors.js';
+
+/**
+ * Get the appropriate icon for a bonus type
+ */
+const getBonusIcon = (bonusType: string): string => {
+    switch (bonusType) {
+        case 'first_clear':
+            return 'rising_star.png';
+        case 'perfect_solve':
+            return 'expert_solver.png';
+        case 'speed_demon':
+            return 'streak_master.png';
+        case 'comeback_king':
+            return 'high_roller.png';
+        case 'streak':
+            return 'streak_master.png';
+        case 'creator_bonus':
+            return 'creator.png';
+        default:
+            return 'points.png';
+    }
+};
 
 export type BonusDisplay = {
     type: string;
@@ -188,15 +211,14 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                     onPress={handleCloseEnlarged}
                     appearance="secondary"
                     size="medium"
-                >
-                    ✕ Close
-                </button>
+                    icon="close"
+                />
             </vstack>
         );
     }
 
     return (
-        <vstack padding="medium" gap="medium" width="100%" height="100%" backgroundColor="#F6F7F8">
+        <vstack padding="medium" gap="medium" width="100%" height="100%" backgroundColor={BG_PRIMARY}>
             {/* Compact Header */}
             <vstack gap="small" width="100%">
                 {/* Top row: Back button and score */}
@@ -210,35 +232,65 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
 
                     <spacer grow />
 
-                    <vstack alignment="center middle" gap="none">
-                        <text size="large" weight="bold" color="#1c1c1c">
-                            {uniquePlayerCount}
-                        </text>
-                        <text size="xsmall" color="#878a8c">
-                            Total Plays
-                        </text>
-                    </vstack>
+                    <hstack alignment="center middle" gap="small">
+                        <image
+                            url="total_attempted.png"
+                            imageWidth={20}
+                            imageHeight={20}
+                            width="20px"
+                            height="20px"
+                            resizeMode="fit"
+                        />
+                        <vstack alignment="center middle" gap="none">
+                            <text size="large" weight="bold" color="#1c1c1c">
+                                {uniquePlayerCount}
+                            </text>
+                            <text size="xsmall" color="#878a8c">
+                                Plays
+                            </text>
+                        </vstack>
+                    </hstack>
 
                     <spacer size="small" />
 
-                    <vstack alignment="center middle" gap="none">
-                        <text size="large" weight="bold" color="#4CAF50">
-                            {playersCompleted}
-                        </text>
-                        <text size="xsmall" color="#878a8c">
-                            Completed
-                        </text>
-                    </vstack>
+                    <hstack alignment="center middle" gap="small">
+                        <image
+                            url="novice_solver.png"
+                            imageWidth={20}
+                            imageHeight={20}
+                            width="20px"
+                            height="20px"
+                            resizeMode="fit"
+                        />
+                        <vstack alignment="center middle" gap="none">
+                            <text size="large" weight="bold" color="#4CAF50">
+                                {playersCompleted}
+                            </text>
+                            <text size="xsmall" color="#878a8c">
+                                Solved
+                            </text>
+                        </vstack>
+                    </hstack>
 
                     <spacer grow />
-                    <vstack alignment="end middle" gap="none">
-                        <text size="xlarge" weight="bold" color="#4CAF50">
-                            {potentialScore} pts
-                        </text>
-                        <text size="xsmall" color="#878a8c">
-                            {Math.min(attemptCount + 1, 10)}/10 attempts
-                        </text>
-                    </vstack>
+                    <hstack alignment="end middle" gap="small">
+                        <image
+                            url="points.png"
+                            imageWidth={20}
+                            imageHeight={20}
+                            width="20px"
+                            height="20px"
+                            resizeMode="fit"
+                        />
+                        <vstack alignment="end middle" gap="none">
+                            <text size="xlarge" weight="bold" color="#4CAF50">
+                                {potentialScore}
+                            </text>
+                            <text size="xsmall" color="#878a8c">
+                                {Math.min(attemptCount + 1, 10)}/10
+                            </text>
+                        </vstack>
+                    </hstack>
                 </hstack>
 
                 {/* Title and completion badge */}
@@ -295,9 +347,10 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                 width="100%"
                 alignment="center middle"
                 padding="xsmall"
+                gap="small"
             >
                 <text size="xsmall" color="#878a8c" alignment="center">
-                    💡 Tap any image to view it larger
+                    Tap any image to view it larger
                 </text>
             </hstack>
 
@@ -374,12 +427,32 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                 >
                     {isCompleted ? (
                         <vstack gap="small" width="100%">
-                            <text size="small" weight="bold" color="#2E7D32">
-                                ✅ Challenge Completed
-                            </text>
-                            <text size="small" color="#1B5E20">
-                                You earned {completedScore} points
-                            </text>
+                            <hstack gap="small" alignment="middle">
+                                <image
+                                    url="novice_solver.png"
+                                    imageWidth={24}
+                                    imageHeight={24}
+                                    width="24px"
+                                    height="24px"
+                                    resizeMode="fit"
+                                />
+                                <text size="small" weight="bold" color="#2E7D32">
+                                    Challenge Completed
+                                </text>
+                            </hstack>
+                            <hstack gap="small" alignment="middle">
+                                <image
+                                    url="points.png"
+                                    imageWidth={18}
+                                    imageHeight={18}
+                                    width="18px"
+                                    height="18px"
+                                    resizeMode="fit"
+                                />
+                                <text size="small" color="#1B5E20">
+                                    You earned {completedScore} points
+                                </text>
+                            </hstack>
                         </vstack>
                     ) : isGameOver && !isCompleted ? (
                         <vstack gap="small" width="100%">
@@ -410,23 +483,40 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                         </vstack>
                     ) : gameState.isGameOver && gameState.isCorrect ? (
                         <vstack gap="small" width="100%">
-                            <text size="medium" weight="bold" color="#2E7D32">
-                                🎉 Correct!
-                            </text>
-                            <text size="small" color="#1B5E20">
-                                {gameState.message}
-                            </text>
+                            <hstack gap="small" alignment="middle">
+                                <image
+                                    url="novice_solver.png"
+                                    imageWidth={24}
+                                    imageHeight={24}
+                                    width="24px"
+                                    height="24px"
+                                    resizeMode="fit"
+                                />
+                                <text size="medium" weight="bold" color="#2E7D32">
+                                    Correct!
+                                </text>
+                            </hstack>
                             {gameState.bonuses && gameState.bonuses.length > 0 ? (
-                                <hstack gap="small">
+                                <hstack gap="small" width="100%">
                                     {gameState.bonuses.map((bonus, idx) => (
                                         <hstack
                                             key={`bonus-${idx}`}
                                             padding="xsmall"
                                             backgroundColor="#FFF8E1"
                                             cornerRadius="small"
+                                            gap="small"
+                                            alignment="middle"
                                         >
+                                            <image
+                                                url={getBonusIcon(bonus.type)}
+                                                imageWidth={16}
+                                                imageHeight={16}
+                                                width="16px"
+                                                height="16px"
+                                                resizeMode="fit"
+                                            />
                                             <text size="xsmall" color="#F57C00" weight="bold">
-                                                {bonus.label} +{bonus.points}
+                                                +{bonus.points}
                                             </text>
                                         </hstack>
                                     ))}

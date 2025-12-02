@@ -4,6 +4,7 @@
  */
 
 import { Devvit } from '@devvit/public-api';
+import { BG_PRIMARY } from '../../constants/colors.js';
 import type { ViewType } from '../../hooks/useNavigation.js';
 import { formatTimeRemaining } from '../../../shared/utils/date-utils.js';
 
@@ -34,7 +35,7 @@ export const MainMenuView: Devvit.BlockComponent<MainMenuViewProps> = (
       gap="medium"
       width="100%"
       height="100%"
-      backgroundColor="#F6F7F8"
+      backgroundColor={BG_PRIMARY}
     >
       {/* Subscribe Button - Top Right */}
       <hstack width="100%" alignment="end top">

@@ -15,6 +15,7 @@ import type { Challenge, ChallengeCreate, ChallengeFilters } from '../../shared/
 import { createPaginatedResult, DEFAULT_PAGE_SIZE, type PaginatedResult } from '../../shared/utils/pagination.js';
 import { RedisCache } from '../utils/redis-cache.js';
 import { TTL } from './cache.service.js';
+import { BG_PRIMARY } from '../../client/constants/colors.js';
 
 /** Cache key for challenge feed - shared across all users */
 export const FEED_CACHE_KEY = 'feed:challenges';
@@ -276,7 +277,7 @@ export class ChallengeService extends BaseService {
         width="100%"
         height="100%"
         alignment="center middle"
-        backgroundColor="#F6F7F8"
+        backgroundColor={BG_PRIMARY}
         padding="large"
         gap="medium"
       >

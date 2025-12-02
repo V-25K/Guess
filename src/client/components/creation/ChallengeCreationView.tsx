@@ -8,6 +8,7 @@ import { ChallengeService } from '../../../server/services/challenge.service.js'
 import { UserService } from '../../../server/services/user.service.js';
 import type { Challenge } from '../../../shared/models/challenge.types.js';
 import { formatTimeRemaining } from '../../../shared/utils/date-utils.js';
+import { BG_PRIMARY } from '../../constants/colors.js';
 
 export interface ChallengeCreationViewProps {
     userId: string;
@@ -245,7 +246,7 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 gap="large"
                 width="100%"
                 height="100%"
-                backgroundColor="#F6F7F8"
+                backgroundColor={BG_PRIMARY}
             >
                 <vstack alignment="center middle" gap="medium">
                     <image url="creator.png" imageWidth={64} imageHeight={64} width="64px" height="64px" resizeMode="fit" />
@@ -284,7 +285,7 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 gap="large"
                 width="100%"
                 height="100%"
-                backgroundColor="#F6F7F8"
+                backgroundColor={BG_PRIMARY}
             >
                 <vstack alignment="center middle" gap="medium">
                     <text style="heading" size="xxlarge">
@@ -320,7 +321,7 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
             gap="medium"
             width="100%"
             height="100%"
-            backgroundColor="#F6F7F8"
+            backgroundColor={BG_PRIMARY}
         >
             <vstack alignment="center middle" gap="small" width="100%">
                 <hstack gap="small" alignment="middle">

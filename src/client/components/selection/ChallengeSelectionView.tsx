@@ -6,6 +6,7 @@
 import { Devvit } from '@devvit/public-api';
 import type { ChallengeTag } from '../../../shared/constants/tags.js';
 import { CHALLENGE_TAGS, TAG_LABELS } from '../../../shared/constants/tags.js';
+import { BG_PRIMARY } from '../../constants/colors.js';
 
 export interface ChallengeSelectionViewProps {
   onSelectTag: (tag: ChallengeTag | 'random') => void;
@@ -37,7 +38,7 @@ export const ChallengeSelectionView: Devvit.BlockComponent<ChallengeSelectionVie
     <vstack
       width="100%"
       height="100%"
-      backgroundColor="#F6F7F8"
+      backgroundColor={BG_PRIMARY}
       padding="medium"
       gap="medium"
     >
