@@ -236,7 +236,7 @@ export const LeaderboardView: Devvit.BlockComponent<LeaderboardViewProps> = (
         width="100%"
         height="100%"
         backgroundColor={BG_PRIMARY}
-        alignment= "center"
+        alignment="center"
       >
         {/* Header with page indicator */}
         <hstack
@@ -357,8 +357,12 @@ export const LeaderboardView: Devvit.BlockComponent<LeaderboardViewProps> = (
         {/* Left Arrow */}
         <vstack height="100%" alignment="middle start" padding="small">
           <button
-            icon="left"
+            icon="left-fill"
             size="small"
+            appearance="secondary"
+            textColor="global-white"
+            lightTextColor="global-white"
+            darkTextColor="global-white"
             onPress={handlePrevPage}
             disabled={currentPage === 0}
           />
@@ -369,8 +373,12 @@ export const LeaderboardView: Devvit.BlockComponent<LeaderboardViewProps> = (
         {/* Right Arrow */}
         <vstack height="100%" alignment="middle end" padding="small">
           <button
-            icon="right"
+            icon="right-fill"
             size="small"
+            appearance="secondary"
+            textColor="global-white"
+            lightTextColor="global-white"
+            darkTextColor="global-white"
             onPress={handleNextPage}
             disabled={currentPage >= totalPages - 1}
           />

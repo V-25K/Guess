@@ -132,7 +132,6 @@ export const AwardsView: Devvit.BlockComponent<AwardsViewProps> = ({
     return (
       <vstack alignment="center middle" height="100%" gap="medium">
         <text>Failed to load awards.</text>
-        <button onPress={onBack}>Back</button>
       </vstack>
     );
   }
@@ -142,7 +141,6 @@ export const AwardsView: Devvit.BlockComponent<AwardsViewProps> = ({
     return (
       <vstack alignment="center middle" height="100%" gap="medium">
         <text>Failed to load awards.</text>
-        <button onPress={onBack}>Back</button>
       </vstack>
     );
   }
@@ -231,7 +229,10 @@ export const AwardsView: Devvit.BlockComponent<AwardsViewProps> = ({
             appearance="secondary"
             size="medium"
             disabled={currentPage === 0}
-            icon="left"
+            icon="left-fill"
+            textColor="global-white"
+            lightTextColor="global-white"
+            darkTextColor="global-white"
           />
 
           <text color="#878a8c" size="small">
@@ -243,7 +244,10 @@ export const AwardsView: Devvit.BlockComponent<AwardsViewProps> = ({
             appearance="secondary"
             size="medium"
             disabled={currentPage === totalPages - 1}
-            icon="right"
+            icon="right-fill"
+            textColor="global-white"
+            lightTextColor="global-white"
+            darkTextColor="global-white"
           />
         </hstack>
       ) : null}
