@@ -40,9 +40,12 @@ export const AnswerExplanationView: Devvit.BlockComponent<AnswerExplanationViewP
             <hstack width="100%" alignment="middle" gap="small">
                 <button
                     onPress={onBack}
-                    appearance="secondary"
+                    appearance="primary"
                     size="small"
-                    icon="back"
+                    icon="back-fill"
+                    textColor="global-white"
+                    lightTextColor="global-white"
+                    darkTextColor="global-white"
                 />
                 <text size="medium" weight="bold" color="#1c1c1c">
                     Answer Explanation
@@ -96,18 +99,24 @@ export const AnswerExplanationView: Devvit.BlockComponent<AnswerExplanationViewP
                     <hstack width="100%" height="100%" alignment="middle" padding="xsmall">
                         <button
                             onPress={handlePrevious}
-                            appearance="secondary"
+                            appearance="primary"
                             size="small"
                             disabled={isFirstImage}
-                            icon="left"
+                            icon="left-fill"
+                            textColor="global-white"
+                            lightTextColor="global-white"
+                            darkTextColor="global-white"
                         />
                         <spacer grow />
                         <button
                             onPress={handleNext}
-                            appearance="secondary"
+                            appearance="primary"
                             size="small"
                             disabled={isLastImage}
-                            icon="right"
+                            icon="right-fill"
+                            textColor="global-white"
+                            lightTextColor="global-white"
+                            darkTextColor="global-white"
                         />
                     </hstack>
 

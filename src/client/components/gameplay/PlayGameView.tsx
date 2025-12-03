@@ -446,7 +446,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                   height="24px"
                   resizeMode="fit"
                 />
-                <text size="small" weight="bold" color="#2E7D32">
+                <text size="small" weight="bold" color="#2E7D32" wrap>
                   Challenge Completed
                 </text>
               </hstack>
@@ -459,35 +459,35 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                   height="18px"
                   resizeMode="fit"
                 />
-                <text size="small" color="#1B5E20">
+                <text size="small" color="#1B5E20" wrap>
                   You earned {completedScore} points
                 </text>
               </hstack>
             </vstack>
           ) : isGameOver && !isCompleted ? (
             <vstack gap="small" width="100%">
-              <text size="medium" weight="bold" color="#D32F2F">
+              <text size="medium" weight="bold" color="#D32F2F" wrap>
                 Game Over
               </text>
-              <text size="small" color="#666666">
+              <text size="small" color="#666666" wrap>
                 Answer: {challenge.correct_answer}
               </text>
             </vstack>
           ) : isCreator ? (
             <vstack gap="small" width="100%">
-              <text size="medium" weight="bold" color="#FF8C00">
+              <text size="medium" weight="bold" color="#FF8C00" wrap>
                 Your Challenge
               </text>
-              <text size="small" color="#666666">
+              <text size="small" color="#666666" wrap>
                 You can't answer your own challenge
               </text>
             </vstack>
           ) : gameState.isGameOver && !gameState.isCorrect ? (
             <vstack gap="small" width="100%">
-              <text size="medium" weight="bold" color="#D32F2F">
+              <text size="medium" weight="bold" color="#D32F2F" wrap>
                 Game Over
               </text>
-              <text size="small" color="#666666">
+              <text size="small" color="#666666" wrap>
                 Answer: {challenge.correct_answer}
               </text>
             </vstack>
@@ -502,7 +502,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                   height="24px"
                   resizeMode="fit"
                 />
-                <text size="medium" weight="bold" color="#2E7D32">
+                <text size="medium" weight="bold" color="#2E7D32" wrap>
                   Correct!
                 </text>
               </hstack>
