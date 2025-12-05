@@ -8,7 +8,13 @@
  * Requirements: 2.1, 2.2, 2.3, 2.4
  */
 
-import type { Challenge } from '../../shared/models/challenge.types.js';
+import type { Challenge, GameChallenge } from '../../shared/models/challenge.types.js';
+
+/**
+ * Minimal interface for preloadable challenges
+ * Allows both Challenge and GameChallenge to be passed without casting
+ */
+export type PreloadableChallenge = Pick<Challenge, 'id' | 'creator_username'>;
 
 /**
  * Configuration for preload behavior
@@ -26,7 +32,7 @@ export interface PreloadConfig {
  * Preloaded challenge with metadata
  */
 export interface PreloadedChallenge {
-  challenge: Challenge;
+  challenge: PreloadableChallenge;
   preloadedAt: number;
   avatarUrl?: string;
 }
@@ -71,10 +77,10 @@ export class PreloadService {
    * 
    * Requirements: 2.1, 2.2, 2.4
    */
-  async preloadNextChallenges(
+  async preloadNextChallenges<T extends PreloadableChallenge>(
     currentIndex: number,
-    challenges: Challenge[],
-    fetcher?: (challenge: Challenge) => Promise<Partial<PreloadedChallenge>>,
+    challenges: T[],
+    fetcher?: (challenge: T) => Promise<Partial<PreloadedChallenge>>,
     count: number = this.config.preloadCount
   ): Promise<void> {
     // Silent failure wrapper - never throw from preload operations
@@ -89,10 +95,10 @@ export class PreloadService {
   /**
    * Internal preload implementation
    */
-  private async doPreload(
+  private async doPreload<T extends PreloadableChallenge>(
     currentIndex: number,
-    challenges: Challenge[],
-    fetcher?: (challenge: Challenge) => Promise<Partial<PreloadedChallenge>>,
+    challenges: T[],
+    fetcher?: (challenge: T) => Promise<Partial<PreloadedChallenge>>,
     count: number = this.config.preloadCount
   ): Promise<void> {
     // Validate inputs
@@ -129,9 +135,9 @@ export class PreloadService {
   /**
    * Preload a single challenge with silent failure handling
    */
-  private async preloadSingleChallenge(
-    challenge: Challenge,
-    fetcher?: (challenge: Challenge) => Promise<Partial<PreloadedChallenge>>
+  private async preloadSingleChallenge<T extends PreloadableChallenge>(
+    challenge: T,
+    fetcher?: (challenge: T) => Promise<Partial<PreloadedChallenge>>
   ): Promise<void> {
     try {
       // Skip if already cached or being preloaded
@@ -180,7 +186,7 @@ export class PreloadService {
    */
   getPreloadedChallenge(challengeId: string): PreloadedChallenge | null {
     const preloaded = this.cache.get(challengeId);
-    
+
     if (preloaded) {
       // Remove from cache after retrieval (one-time use)
       this.cache.delete(challengeId);

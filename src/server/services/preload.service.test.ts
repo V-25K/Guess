@@ -17,7 +17,7 @@ const challengeArbitrary = fc.record({
   creator_id: fc.string({ minLength: 1, maxLength: 20 }),
   creator_username: fc.string({ minLength: 1, maxLength: 20 }),
   title: fc.string({ minLength: 3, maxLength: 200 }),
-  description: fc.option(fc.string({ maxLength: 1000 }), { nil: null }),
+
   image_url: fc.string({ minLength: 1, maxLength: 500 }),
   tags: fc.array(fc.string({ minLength: 1, maxLength: 50 }), { minLength: 1, maxLength: 5 }),
   correct_answer: fc.string({ minLength: 1, maxLength: 500 }),
@@ -76,11 +76,11 @@ describe('PreloadService Properties', () => {
           async (challenges, indexSeed, preloadCount) => {
             // Ensure we have enough challenges
             if (challenges.length < 4) return;
-            
+
             // Calculate valid current index (leave room for preloading)
             const maxIndex = Math.max(0, challenges.length - 2);
             const currentIndex = indexSeed % (maxIndex + 1);
-            
+
             // Create service with specific preload count
             const service = new PreloadService({
               preloadCount,
@@ -125,7 +125,7 @@ describe('PreloadService Properties', () => {
           challengeListArbitrary(1, 10),
           async (challenges) => {
             if (challenges.length === 0) return;
-            
+
             const service = new PreloadService({
               preloadCount: 3,
               preloadDelayMs: 0,
@@ -150,7 +150,7 @@ describe('PreloadService Properties', () => {
           challengeListArbitrary(5, 15),
           async (challenges) => {
             if (challenges.length < 5) return;
-            
+
             const service = new PreloadService({
               preloadCount: 3,
               preloadDelayMs: 0,
@@ -189,7 +189,7 @@ describe('PreloadService Properties', () => {
           fc.integer({ min: -100, max: -1 }),
           async (challenges, negativeIndex) => {
             if (challenges.length === 0) return;
-            
+
             const service = new PreloadService({
               preloadCount: 3,
               preloadDelayMs: 0,
@@ -198,7 +198,7 @@ describe('PreloadService Properties', () => {
 
             // Should not throw with negative index
             await service.preloadNextChallenges(negativeIndex, challenges);
-            
+
             // Should have preloaded 0 challenges (invalid index)
             expect(service.getCacheSize()).toBe(0);
           }
@@ -213,7 +213,7 @@ describe('PreloadService Properties', () => {
           challengeListArbitrary(5, 15),
           async (challenges) => {
             if (challenges.length < 5) return;
-            
+
             const service = new PreloadService({
               preloadCount: 3,
               preloadDelayMs: 0,
@@ -226,7 +226,7 @@ describe('PreloadService Properties', () => {
 
             // Preload again from index 0 (should not add duplicates)
             await service.preloadNextChallenges(0, challenges);
-            
+
             // Cache size should remain the same
             expect(service.getCacheSize()).toBe(firstCacheSize);
           }
@@ -252,7 +252,7 @@ describe('PreloadService Properties', () => {
           fc.string({ minLength: 1, maxLength: 100 }), // Error message
           async (challenges, errorMessage) => {
             if (challenges.length < 3) return;
-            
+
             const service = new PreloadService({
               preloadCount: 3,
               preloadDelayMs: 0,
@@ -298,7 +298,7 @@ describe('PreloadService Properties', () => {
           challengeListArbitrary(5, 15),
           async (challenges) => {
             if (challenges.length < 5) return;
-            
+
             const service = new PreloadService({
               preloadCount: 3,
               preloadDelayMs: 0,
@@ -338,7 +338,7 @@ describe('PreloadService Properties', () => {
           fc.integer({ min: 0, max: 2 }), // Which challenge index to fail
           async (challenges, failIndex) => {
             if (challenges.length < 5) return;
-            
+
             const service = new PreloadService({
               preloadCount: 3,
               preloadDelayMs: 0,
@@ -376,7 +376,7 @@ describe('PreloadService Properties', () => {
       });
 
       // Mock console.warn to verify it's called
-      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
 
       const challenges: Challenge[] = [
         {
@@ -384,7 +384,7 @@ describe('PreloadService Properties', () => {
           creator_id: 'user1',
           creator_username: 'user1',
           title: 'Test',
-          description: null,
+
           image_url: 'http://example.com/img.jpg',
           tags: ['test'],
           correct_answer: 'answer',
@@ -400,7 +400,7 @@ describe('PreloadService Properties', () => {
           creator_id: 'user1',
           creator_username: 'user1',
           title: 'Test 2',
-          description: null,
+
           image_url: 'http://example.com/img2.jpg',
           tags: ['test'],
           correct_answer: 'answer2',

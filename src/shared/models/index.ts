@@ -8,3 +8,4 @@ export * from './challenge.types.js';
 export * from './attempt.types.js';
 export * from './comment.types.js';
 export * from './common.types.js';
+export * from './errors.js';

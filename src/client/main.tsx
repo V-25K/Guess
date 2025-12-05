@@ -13,7 +13,6 @@ import type { Context } from '@devvit/public-api';
 import { UserService } from '../server/services/user.service.js';
 import { ChallengeService } from '../server/services/challenge.service.js';
 import { AttemptService } from '../server/services/attempt.service.js';
-import { AIValidationService } from '../server/services/ai-validation.service.js';
 import { LeaderboardService } from '../server/services/leaderboard.service.js';
 import { CommentService } from '../server/services/comment.service.js';
 import { PreloadService } from '../server/services/preload.service.js';
@@ -30,19 +29,12 @@ import { useNavigation } from './hooks/useNavigation.js';
 import { useRewards } from './hooks/useRewards.js';
 
 import { NavigationBar, ViewContainer } from './components/navigation/index.js';
-import { ErrorBoundary, LoadingView, AllCaughtUpView } from './components/shared/index.js';
-import { ProfileView } from './components/profile/index.js';
-import { LeaderboardView } from './components/leaderboard/index.js';
-import { GameplayViewWrapper } from './components/gameplay/index.js';
-import { ChallengeCreationView } from './components/creation/index.js';
-import { MainMenuView } from './components/menu/index.js';
-import type { ChallengeCreationViewProps } from './components/creation/ChallengeCreationView.js';
-import type { MainMenuViewProps } from './components/menu/MainMenuView.js';
+import { ErrorBoundary, LoadingView, AllCaughtUpView, ViewRouter } from './components/shared/index.js';
 import { RewardNotification } from './components/shared/RewardNotification.js';
-import { AwardsView } from './components/awards/AwardsView.js';
 
-import { convertToGameChallenges } from '../shared/utils/challenge-utils.js';
+import { convertToGameChallenges, filterAvailableChallenges } from '../shared/utils/challenge-utils.js';
 import { fetchAvatarUrlCached } from '../server/utils/challenge-utils.js';
+import { loadChallengesWithAvatars } from './utils/challenge-loader.js';
 
 import { BG_PRIMARY } from './constants/colors.js';
 
@@ -64,10 +56,9 @@ function initializeServices(context: Context) {
     const userService = new UserService(context, userRepo);
     const challengeService = new ChallengeService(context, challengeRepo, userService);
     const attemptService = new AttemptService(context, attemptRepo, userService, challengeRepo);
-    const aiValidationService = new AIValidationService(context);
     const leaderboardService = new LeaderboardService(context, userRepo);
     const commentService = new CommentService(context, commentRepo, userService);
-    
+
     // Performance optimization services
     const preloadService = new PreloadService();
     const cacheService = new CacheService(context);
@@ -77,7 +68,6 @@ function initializeServices(context: Context) {
         userService,
         challengeService,
         attemptService,
-        aiValidationService,
         leaderboardService,
         commentService,
         preloadService,
@@ -178,7 +168,7 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
 
     // Load user profile separately to ensure state updates work
     // Uses request deduplication to prevent duplicate fetches (Requirement 4.3)
-    useAsync(async () => {
+    const { } = useAsync(async () => {
         if (!currentUser) return null;
 
         // Deduplicate profile requests using RequestDeduplicator
@@ -205,66 +195,20 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
         if (!currentUser) return { allChallenges: [], availableChallenges: [] };
 
         try {
-            // Parallel fetch of subscription status and rate limit check (Requirement 5.1)
-            const [subscriptionResult, rateLimitCheck, dbChallenges, userAttempts] = await Promise.all([
-                // Check if user has subscribed (tracked in Redis)
-                (async () => {
-                    try {
-                        const subscriptionKey = `subscription:${userId}`;
-                        const isSubscribed = await context.redis.get(subscriptionKey);
-                        return isSubscribed === 'true';
-                    } catch {
-                        return false;
-                    }
-                })(),
-                // Check rate limit
-                services.userService.canCreateChallenge(userId),
-                // Fetch challenges
-                services.challengeService.getChallenges(),
-                // OPTIMIZATION: Batch fetch all user attempts in single query (Requirement 5.2)
-                services.attemptService.getUserAttempts(userId),
-            ]);
+            const result = await loadChallengesWithAvatars(context, userId, {
+                challengeService: services.challengeService,
+                attemptService: services.attemptService,
+                userService: services.userService,
+            });
 
-            setIsMember(subscriptionResult);
-            setCanCreateChallenge(rateLimitCheck.canCreate);
-            setRateLimitTimeRemaining(rateLimitCheck.timeRemaining);
+            setIsMember(result.isMember);
+            setCanCreateChallenge(result.canCreateChallenge);
+            setRateLimitTimeRemaining(result.rateLimitTimeRemaining);
 
-            const gameChallenges = convertToGameChallenges(dbChallenges);
-
-            // Fetch avatars using cached version (Requirement 5.3)
-            await Promise.all(
-                gameChallenges.map(async (challenge) => {
-                    try {
-                        const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username);
-                        if (avatarUrl) {
-                            challenge.creator_avatar_url = avatarUrl;
-                        }
-                    } catch (error) {
-                        console.error('[Main] Error fetching avatar:', error);
-                    }
-                })
-            );
-
-            // Filter out completed, game over, or user's own challenges
-            // Use Map for O(1) lookup by challenge ID (Requirement 5.2)
-            const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
-
-            const available: GameChallenge[] = [];
-            for (const challenge of gameChallenges) {
-                // Skip challenges created by the current user
-                if (challenge.creator_id === userId) {
-                    continue;
-                }
-
-                const attempt = attemptMap.get(challenge.id);
-
-                // Include challenge if not attempted, or if attempted but not completed and not game over
-                if (!attempt || (!attempt.is_solved && !attempt.game_over)) {
-                    available.push(challenge);
-                }
-            }
-
-            return { allChallenges: gameChallenges, availableChallenges: available };
+            return {
+                allChallenges: result.allChallenges,
+                availableChallenges: result.availableChallenges
+            };
         } catch (error) {
             console.error('[Main] Error loading challenges:', error);
             return { allChallenges: [], availableChallenges: [] };
@@ -279,11 +223,9 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
 
                 // Trigger preload of next challenges after current loads (Requirement 2.1, 2.2)
                 if (data.availableChallenges.length > 0) {
-                    // Convert GameChallenge[] to Challenge[] for preload service
-                    const challengesForPreload = data.availableChallenges as unknown as Challenge[];
                     services.preloadService.preloadNextChallenges(
                         currentChallengeIndex,
-                        challengesForPreload,
+                        data.availableChallenges,
                         async (challenge) => {
                             // Fetch avatar URL for preloaded challenges
                             const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username || '');
@@ -337,62 +279,44 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
                 // Check if next challenge is preloaded (Requirement 2.1)
                 const nextChallenge = availableChallenges[nextIndex];
                 const preloaded = services.preloadService.getPreloadedChallenge(nextChallenge.id);
-                
+
                 if (preloaded?.avatarUrl && !nextChallenge.creator_avatar_url) {
                     // Use preloaded avatar URL
                     nextChallenge.creator_avatar_url = preloaded.avatarUrl;
                 }
-                
+
                 setCurrentChallengeIndex(nextIndex);
-                
+
                 // Trigger preload for subsequent challenges (Requirement 2.2)
-                const challengesForPreload = availableChallenges as unknown as Challenge[];
                 services.preloadService.preloadNextChallenges(
                     nextIndex,
-                    challengesForPreload,
+                    availableChallenges,
                     async (challenge) => {
                         const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username || '');
                         return { avatarUrl };
                     }
                 );
-                
+
                 setIsLoadingNext(false);
             } else {
                 // Refresh available challenges to check if any new ones are available
-                // OPTIMIZATION: Batch fetch all user attempts in single query (Requirement 5.2)
                 const userAttempts = await services.attemptService.getUserAttempts(userId);
-                const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
-
-                const available: GameChallenge[] = [];
-                for (const challenge of challenges) {
-                    // Skip challenges created by the current user
-                    if (challenge.creator_id === userId) {
-                        continue;
-                    }
-
-                    const attempt = attemptMap.get(challenge.id);
-
-                    // Include challenge if not attempted, or if attempted but not completed and not game over
-                    if (!attempt || (!attempt.is_solved && !attempt.game_over)) {
-                        available.push(challenge);
-                    }
-                }
+                const available = filterAvailableChallenges(challenges, userAttempts, userId);
                 setAvailableChallenges(available);
                 setCurrentChallengeIndex(0);
-                
+
                 // Trigger preload for new available challenges
                 if (available.length > 0) {
-                    const challengesForPreload = available as unknown as Challenge[];
                     services.preloadService.preloadNextChallenges(
                         0,
-                        challengesForPreload,
+                        available,
                         async (challenge) => {
                             const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username || '');
                             return { avatarUrl };
                         }
                     );
                 }
-                
+
                 setIsLoadingNext(false);
             }
         } catch (error) {
@@ -444,57 +368,18 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
     };
 
     const handleChallengeCreated = async (createdChallenge: any) => {
-
         // Refresh data in the background while success screen is shown
         try {
-            // Parallel fetch of challenges, user attempts, and rate limit (Requirement 5.1)
-            const [dbChallenges, userAttempts, newRateLimitCheck] = await Promise.all([
-                services.challengeService.getChallenges(),
-                // OPTIMIZATION: Batch fetch all user attempts in single query (Requirement 5.2)
-                services.attemptService.getUserAttempts(userId),
-                services.userService.canCreateChallenge(userId),
-            ]);
+            const result = await loadChallengesWithAvatars(context, userId, {
+                challengeService: services.challengeService,
+                attemptService: services.attemptService,
+                userService: services.userService,
+            });
 
-            const gameChallenges = convertToGameChallenges(dbChallenges);
-
-            // Fetch avatars for new challenges using cached version (Requirement 5.3)
-            await Promise.all(
-                gameChallenges.map(async (challenge) => {
-                    try {
-                        const avatarUrl = await fetchAvatarUrlCached(context, challenge.creator_username);
-                        if (avatarUrl) {
-                            challenge.creator_avatar_url = avatarUrl;
-                        }
-                    } catch (error) {
-                        console.error('[Main] Error fetching avatar:', error);
-                    }
-                })
-            );
-
-            setChallenges(gameChallenges);
-
-            // Filter available challenges using Map for O(1) lookup (Requirement 5.2)
-            const attemptMap = new Map(userAttempts.map(a => [a.challenge_id, a]));
-
-            const available: GameChallenge[] = [];
-            for (const challenge of gameChallenges) {
-                // Skip challenges created by the current user
-                if (challenge.creator_id === userId) {
-                    continue;
-                }
-
-                const attempt = attemptMap.get(challenge.id);
-
-                // Include challenge if not attempted, or if attempted but not completed and not game over
-                if (!attempt || (!attempt.is_solved && !attempt.game_over)) {
-                    available.push(challenge);
-                }
-            }
-            setAvailableChallenges(available);
-
-            // Update rate limit status
-            setCanCreateChallenge(newRateLimitCheck.canCreate);
-            setRateLimitTimeRemaining(newRateLimitCheck.timeRemaining);
+            setChallenges(result.allChallenges);
+            setAvailableChallenges(result.availableChallenges);
+            setCanCreateChallenge(result.canCreateChallenge);
+            setRateLimitTimeRemaining(result.rateLimitTimeRemaining);
 
             // Clear preload cache since challenges have changed
             services.preloadService.clearPreloadCache();
@@ -504,199 +389,40 @@ const GuessTheLinkGame: Devvit.CustomPostComponent = (context: Context) => {
         }
     };
 
-    const CreateView = () => {
-        const createProps = {
-            userId,
-            username,
-            canCreateChallenge,
-            userLevel,
-            isModerator,
-            challengeService: services.challengeService,
-            userService: services.userService,
-            onSuccess: handleChallengeCreated,
-            onCancel: () => navigateTo('menu'),
-            onBackToMenu: () => navigateTo('menu'),
-        };
-        return <ChallengeCreationView {...createProps as ChallengeCreationViewProps} />;
-    };
-
     // Render logic
-    let mainContent = null;
-
-    if (currentView === 'loading') {
-        return <LoadingView />;
-    } else if (currentView === 'menu') {
-        const menuProps = {
-            canCreateChallenge,
-            rateLimitTimeRemaining,
-            challengesCount: challenges.length,
-            isMember,
-            userLevel,
-            isModerator,
-            onNavigate: navigateTo,
-            onSubscribe: handleSubscribe,
-        };
-        mainContent = <MainMenuView {...menuProps as MainMenuViewProps} />;
-    } else if (currentView === 'gameplay') {
-        if (isViewingSpecificChallenge) {
-            if (!currentChallenge) {
-                console.warn('[Main] No current challenge found in gameplay view');
-                mainContent = (
-                    <AllCaughtUpView
-                        onBackToMenu={() => {
-                            setIsViewingSpecificChallenge(false);
-                            navigateTo('menu');
-                        }}
-                        message="Challenge not found"
-                    />
-                );
-            } else {
-                mainContent = (
-                    <ErrorBoundary
-                        onError={() => {/* Error logged by ErrorBoundary component */ }}
-                        onReset={() => navigateTo('menu')}
-                    >
-                        <GameplayViewWrapper
-                            userId={userId}
-                            currentChallenge={currentChallenge}
-                            challenges={challenges}
-                            currentChallengeIndex={currentChallengeIndex}
-                            onNextChallenge={handleNextChallenge}
-                            onBackToMenu={() => {
-                                setIsViewingSpecificChallenge(false);
-                                navigateTo('menu');
-                            }}
-                            isLoadingNext={isLoadingNext}
-                            onReward={showReward}
-                        />
-                    </ErrorBoundary>
-                );
-            }
-        } else if (!challengesLoaded) {
-            mainContent = <LoadingView />;
-        } else if (isLoadingNext) {
-            // Show loading screen while fetching next challenge
-            mainContent = (
-                <vstack
-                    alignment="center middle"
-                    padding="medium"
-                    gap="medium"
-                    width="100%"
-                    height="100%"
-                    backgroundColor={BG_PRIMARY}
-                >
-                    <image
-                        url="logo.png"
-                        imageHeight={100}
-                        imageWidth={240}
-                        resizeMode="fit"
-                    />
-                    <vstack gap="small" alignment="center middle">
-                        <text size="large" weight="bold" color="#1c1c1c">
-                            Loading Next Challenge...
-                        </text>
-                        <text size="medium" color="#878a8c">
-                            Finding a new puzzle for you
-                        </text>
-                    </vstack>
-                </vstack>
-            );
-        } else if (availableChallenges.length === 0 || !currentChallenge) {
-            mainContent = (
-                <AllCaughtUpView
-                    onBackToMenu={() => navigateTo('menu')}
-                    message={challenges.length === 0
-                        ? "No challenges available yet. Create one to get started!"
-                        : "You've completed all available challenges!"}
-                />
-            );
-        } else {
-            mainContent = (
-                <ErrorBoundary
-                    onError={() => {/* Error logged by ErrorBoundary component */ }}
-                    onReset={() => navigateTo('menu')}
-                >
-                    <GameplayViewWrapper
-                        userId={userId}
-                        currentChallenge={currentChallenge}
-                        challenges={availableChallenges}
-                        currentChallengeIndex={currentChallengeIndex}
-                        onNextChallenge={handleNextChallenge}
-                        onBackToMenu={() => navigateTo('menu')}
-                        isLoadingNext={isLoadingNext}
-                        onReward={showReward}
-                    />
-                </ErrorBoundary>
-            );
-        }
-    } else {
-        // Default views (profile, leaderboard, create, awards)
-        mainContent = (
-            <zstack width="100%" height="100%" alignment="center middle">
-                <vstack width="100%" height="100%" gap="none">
-                    <NavigationBar
-                        currentView={currentView}
-                        onNavigate={navigateTo}
-                    />
-
-                    <ViewContainer currentView={currentView}>
-                        {currentView === 'profile' && (
-                            <ErrorBoundary
-                                onError={() => {/* Error logged by ErrorBoundary component */ }}
-                                onReset={() => navigateTo('menu')}
-                            >
-                                <ProfileView
-                                    userId={userId}
-                                    username={username}
-                                    userService={services.userService}
-                                    cachedProfile={cachedProfile}
-                                    onProfileLoaded={setCachedProfile}
-                                    cachedAvatarUrl={cachedAvatarUrl}
-                                    onAvatarLoaded={setCachedAvatarUrl}
-                                />
-                            </ErrorBoundary>
-                        )}
-                        {currentView === 'leaderboard' && (
-                            <ErrorBoundary
-                                onError={() => {/* Error logged by ErrorBoundary component */ }}
-                                onReset={() => navigateTo('menu')}
-                            >
-                                <LeaderboardView
-                                    userId={userId}
-                                    leaderboardService={services.leaderboardService}
-                                    cachedData={cachedLeaderboard}
-                                    onDataLoaded={setCachedLeaderboard}
-                                />
-                            </ErrorBoundary>
-                        )}
-                        {currentView === 'create' && (
-                            <ErrorBoundary
-                                onError={() => {/* Error logged by ErrorBoundary component */ }}
-                                onReset={() => navigateTo('menu')}
-                            >
-                                <CreateView />
-                            </ErrorBoundary>
-                        )}
-                        {currentView === 'awards' && (
-                            <ErrorBoundary
-                                onError={() => {/* Error logged by ErrorBoundary component */ }}
-                                onReset={() => navigateTo('menu')}
-                            >
-                                <AwardsView
-                                    userId={userId}
-                                    username={username}
-                                    userService={services.userService}
-                                    onBack={() => navigateTo('menu')}
-                                    cachedProfile={cachedProfile}
-                                    onProfileLoaded={setCachedProfile}
-                                />
-                            </ErrorBoundary>
-                        )}
-                    </ViewContainer>
-                </vstack>
-            </zstack>
-        );
-    }
+    const mainContent = (
+        <ViewRouter
+            currentView={currentView}
+            navigateTo={navigateTo}
+            userId={userId}
+            username={username || ''}
+            userLevel={userLevel}
+            isModerator={isModerator}
+            isMember={isMember}
+            challenges={challenges}
+            availableChallenges={availableChallenges}
+            currentChallenge={currentChallenge}
+            currentChallengeIndex={currentChallengeIndex}
+            isViewingSpecificChallenge={isViewingSpecificChallenge}
+            challengesLoaded={challengesLoaded}
+            isLoadingNext={isLoadingNext}
+            canCreateChallenge={canCreateChallenge}
+            rateLimitTimeRemaining={rateLimitTimeRemaining}
+            userService={services.userService}
+            challengeService={services.challengeService}
+            leaderboardService={services.leaderboardService}
+            cachedProfile={cachedProfile}
+            setCachedProfile={setCachedProfile}
+            cachedLeaderboard={cachedLeaderboard}
+            setCachedLeaderboard={setCachedLeaderboard}
+            cachedAvatarUrl={cachedAvatarUrl}
+            handleNextChallenge={handleNextChallenge}
+            handleSubscribe={handleSubscribe}
+            handleChallengeCreated={handleChallengeCreated}
+            showReward={showReward}
+            setIsViewingSpecificChallenge={setIsViewingSpecificChallenge}
+        />
+    );
 
     return (
         <zstack width="100%" height="100%" alignment="center middle">

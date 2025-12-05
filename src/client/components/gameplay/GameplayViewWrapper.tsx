@@ -61,7 +61,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
   }>({
     attemptCount: 0,
     attemptsRemaining: 10,
-    potentialScore: 30,
+    potentialScore: 28,
     message: 'What connects these images?',
     isGameOver: false,
     isCorrect: false,
@@ -124,7 +124,7 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
           ...prev,
           attemptCount: 0,
           attemptsRemaining: 10,
-          potentialScore: 30,
+          potentialScore: 28,
           message: 'What connects these images?',
           isGameOver: false,
           isCorrect: false,

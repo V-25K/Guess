@@ -10,6 +10,7 @@ import { Devvit } from '@devvit/public-api';
 import { BaseService } from './base.service.js';
 import { ChallengeRepository } from '../repositories/challenge.repository.js';
 import { UserService } from './user.service.js';
+import { AnswerSetGeneratorService, type AnswerSet } from './answer-set-generator.service.js';
 import { getCreationReward } from '../../shared/utils/reward-calculator.js';
 import type { Challenge, ChallengeCreate, ChallengeFilters } from '../../shared/models/challenge.types.js';
 import { createPaginatedResult, DEFAULT_PAGE_SIZE, type PaginatedResult } from '../../shared/utils/pagination.js';
@@ -25,6 +26,7 @@ export const FEED_CACHE_TTL = TTL.CHALLENGE_FEED;
 
 export class ChallengeService extends BaseService {
   private feedCache: RedisCache;
+  private answerSetGenerator: AnswerSetGeneratorService;
 
   constructor(
     context: Context,
@@ -33,6 +35,7 @@ export class ChallengeService extends BaseService {
   ) {
     super(context);
     this.feedCache = new RedisCache(context.redis);
+    this.answerSetGenerator = new AnswerSetGeneratorService(context);
   }
 
   /**
@@ -109,6 +112,31 @@ export class ChallengeService extends BaseService {
           return null;
         }
 
+        // Generate answer sets using AI if not provided by client (e.g. from preview step)
+        if (challenge.answer_set) {
+          this.logInfo('ChallengeService.createChallenge', 'Using client-provided answer set');
+        } else {
+          try {
+            this.logInfo('ChallengeService.createChallenge', 'Generating answer sets with AI...');
+            const answerSet = await this.answerSetGenerator.generateAnswerSet(challenge);
+
+            // Add answer_set to challenge
+            challenge.answer_set = answerSet;
+
+            this.logInfo(
+              'ChallengeService.createChallenge',
+              `Answer set generated: ${answerSet.correct.length} correct, ${answerSet.close.length} close answers`
+            );
+          } catch (error) {
+            this.logWarning(
+              'ChallengeService.createChallenge',
+              `Answer set generation failed: ${error instanceof Error ? error.message : String(error)}. Using fallback.`
+            );
+            // Use fallback answer set
+            challenge.answer_set = this.answerSetGenerator.getFallbackAnswerSet(challenge);
+          }
+        }
+
         // Create the challenge in database with retry logic
         const createdChallenge = await this.withRetry(
           () => this.challengeRepo.create(challenge),
@@ -155,6 +183,22 @@ export class ChallengeService extends BaseService {
       },
       'Failed to create challenge'
     );
+  }
+
+  /**
+   * Generate answer set preview for user review
+   * Does NOT save to database
+   */
+  async generateAnswerSetPreview(challenge: ChallengeCreate): Promise<AnswerSet> {
+    const result = await this.withErrorHandling(
+      async () => {
+        this.logInfo('ChallengeService.generateAnswerSetPreview', 'Generating preview...');
+        return await this.answerSetGenerator.generateAnswerSet(challenge);
+      },
+      'Failed to generate answer set preview'
+    );
+
+    return result || this.answerSetGenerator.getFallbackAnswerSet(challenge);
   }
 
   /**
@@ -544,9 +588,7 @@ export class ChallengeService extends BaseService {
       errors.push('Answer must be between 1 and 500 characters');
     }
 
-    if (challenge.description && challenge.description.length > 1000) {
-      errors.push('Description must be less than 1000 characters');
-    }
+
 
     // Check image count
     if (challenge.image_url) {

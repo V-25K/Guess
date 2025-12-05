@@ -10,3 +10,4 @@ export * from './useRewards.js';
 export * from './useLeaderboard.js';
 export * from './useRetry.js';
 export * from './useAttemptTracking.js';
+export * from './useGameState.js';

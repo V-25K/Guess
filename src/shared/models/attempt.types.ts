@@ -8,7 +8,12 @@ export type ChallengeAttempt = {
   user_id: string;
   challenge_id: string;
   attempts_made: number;
-  /** @deprecated Use attempts_made instead. Kept for backward compatibility. */
+  /**
+   * @deprecated Since v0.2.0. Use attempts_made instead.
+   * Kept for backward compatibility with existing database records.
+   * @removalVersion v1.0.0
+   * @migration Before removal, ensure all database records use attempts_made.
+   */
   images_revealed: number;
   is_solved: boolean;
   game_over: boolean;

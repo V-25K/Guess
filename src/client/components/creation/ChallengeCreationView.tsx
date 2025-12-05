@@ -10,6 +10,9 @@ import type { Challenge } from '../../../shared/models/challenge.types.js';
 import { formatTimeRemaining } from '../../../shared/utils/date-utils.js';
 import { BG_PRIMARY } from '../../constants/colors.js';
 
+import { AnswerSet } from '../../../server/services/answer-set-generator.service.js';
+import { ChallengeCreationReview } from './ChallengeCreationReview.js';
+
 export interface ChallengeCreationViewProps {
     userId: string;
     username: string;
@@ -33,12 +36,15 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
 ) => {
     const REQUIRED_LEVEL = 3;
 
-    // State: 'idle' | 'creating' | 'success' | 'error'
+    // State: 'idle' | 'review' | 'creating' | 'success' | 'error'
     const [status, setStatus] = useState<string>('idle');
     const [errorMessage, setErrorMessage] = useState<string>('');
-
+    const [reviewData, setReviewData] = useState<{
+        values: any;
+        answerSet: AnswerSet;
+    } | null>(null);
     // Process challenge creation
-    const processCreation = async (values: Record<string, unknown>) => {
+    const processCreation = async (values: Record<string, unknown>, answerSet?: AnswerSet) => {
         try {
             // Check rate limit
             const rateLimitCheck = await userService.canCreateChallenge(userId);
@@ -99,7 +105,6 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 creator_id: userId,
                 creator_username: username,
                 title: title.trim(),
-                description: null,
                 image_url: imageUrlArray.join(','),
                 image_descriptions: imageDescriptions,
                 answer_explanation: answerExplanation?.trim() || undefined,
@@ -107,8 +112,7 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 tags: tagArray,
                 max_score: maxScore,
                 score_deduction_per_hint: scoreDeductionPerHint,
-                players_played: 0,
-                players_completed: 0,
+                answer_set: answerSet,
             });
 
             if (challenge) {
@@ -233,9 +237,74 @@ export const ChallengeCreationView: Devvit.BlockComponent<ChallengeCreationViewP
                 return;
             }
 
-            await processCreation(values);
+            try {
+                setStatus('creating');
+                context.ui.showToast('🤖 Generating answer variations...');
+
+                // Generate preview
+                const preview = await challengeService.generateAnswerSetPreview({
+                    title: values.title as string,
+                    correct_answer: values.answer as string,
+                    image_url: '', // Not needed for preview generation context usually, or passed if needed
+                    tags: [], // Not critical for preview
+                    creator_id: userId,
+                    creator_username: username,
+                    // Pass other required fields as empty/dummy for preview generation if strict validation isn't hit
+                    // But wait, generateAnswerSet uses these. We should construct a partial object.
+                    // Actually, let's just pass the values we have.
+                    // The service method expects ChallengeCreate.
+                    // We need to construct a valid-ish object.
+                    image_descriptions: [
+                        values.desc1 as string,
+                        values.desc2 as string,
+                        values.desc3 as string
+                    ].filter(Boolean),
+                    answer_explanation: values.answerExplanation as string,
+                } as any);
+
+                setReviewData({
+                    values,
+                    answerSet: preview
+                });
+                setStatus('review');
+            } catch (error) {
+                console.error('Preview generation failed:', error);
+                context.ui.showToast('⚠️ AI generation failed, using manual mode');
+                // Fallback to review with empty/basic set
+                setReviewData({
+                    values,
+                    answerSet: {
+                        correct: [(values.answer as string).toLowerCase()],
+                        close: []
+                    }
+                });
+                setStatus('review');
+            }
         }
     );
+
+    // Show review screen
+    if (status === 'review' && reviewData) {
+        return (
+            <ChallengeCreationReview
+                answerSet={reviewData.answerSet}
+                onConfirm={async (finalAnswerSet: AnswerSet) => {
+                    setStatus('creating');
+                    if (reviewData) {
+                        await processCreation(reviewData.values, finalAnswerSet);
+                    }
+                }}
+                onCancel={() => {
+                    // Keep reviewData so we can re-populate the form
+                    setStatus('idle');
+                    // Re-show the form with existing values
+                    if (reviewData?.values) {
+                        context.ui.showForm(createForm);
+                    }
+                }}
+            />
+        );
+    }
 
     // Show success screen after creation
     if (status === 'success') {

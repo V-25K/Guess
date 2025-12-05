@@ -136,30 +136,53 @@ export abstract class BaseService {
   }
 
   /**
-   * Log an error with context
-   * @param context - Service or operation context
-   * @param error - Error object or message
+   * Structured logging helper
    */
-  protected logError(context: string, error: unknown): void {
+  private log(level: 'info' | 'warn' | 'error', context: string, message: string, metadata?: Record<string, any>): void {
+    const logEntry = {
+      level,
+      context,
+      message,
+      timestamp: new Date().toISOString(),
+      ...metadata,
+    };
+
+    const logString = JSON.stringify(logEntry);
+
+    if (level === 'error') {
+      console.error(logString);
+    } else if (level === 'warn') {
+      console.warn(logString);
+    } else {
+      console.log(logString);
+    }
+  }
+
+  /**
+   * Log an error with context and metadata
+   */
+  protected logError(context: string, error: unknown, metadata?: Record<string, any>): void {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`[${context}] ${errorMessage}`);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    this.log('error', context, errorMessage, {
+      ...metadata,
+      stack: errorStack,
+      rawError: error instanceof Error ? undefined : error,
+    });
   }
 
   /**
-   * Log info message with context
-   * @param context - Service or operation context
-   * @param message - Info message
+   * Log info message with context and metadata
    */
-  protected logInfo(_context: string, _message: string): void {
-    // Info logging removed for production
+  protected logInfo(context: string, message: string, metadata?: Record<string, any>): void {
+    this.log('info', context, message, metadata);
   }
 
   /**
-   * Log warning with context
-   * @param context - Service or operation context
-   * @param message - Warning message
+   * Log warning with context and metadata
    */
-  protected logWarning(context: string, message: string): void {
-    console.warn(`[${context}] ${message}`);
+  protected logWarning(context: string, message: string, metadata?: Record<string, any>): void {
+    this.log('warn', context, message, metadata);
   }
 }

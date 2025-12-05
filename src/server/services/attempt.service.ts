@@ -8,13 +8,13 @@ import { BaseService } from './base.service.js';
 import { AttemptRepository } from '../repositories/attempt.repository.js';
 import { ChallengeRepository } from '../repositories/challenge.repository.js';
 import { UserService } from './user.service.js';
-import { AIValidationService } from './ai-validation.service.js';
+import { LocalValidationService } from './local-validation.service.js';
 import { calculateAttemptRewardWithBonuses, calculatePotentialScore, getCreatorBonus } from '../../shared/utils/reward-calculator.js';
 import type { ChallengeAttempt, ChallengeAttemptCreate, AttemptResult } from '../../shared/models/attempt.types.js';
 import type { Bonus } from '../../shared/models/common.types.js';
 
 export class AttemptService extends BaseService {
-  private aiValidationService: AIValidationService;
+  private localValidationService: LocalValidationService;
 
   constructor(
     context: Context,
@@ -27,8 +27,8 @@ export class AttemptService extends BaseService {
     if (!this.challengeRepo) {
       this.challengeRepo = new ChallengeRepository(context);
     }
-    // Initialize AI validation service
-    this.aiValidationService = new AIValidationService(context);
+    // Initialize local validation service (no AI calls needed)
+    this.localValidationService = new LocalValidationService(context);
   }
 
   /**
@@ -84,7 +84,8 @@ export class AttemptService extends BaseService {
 
   /**
    * Submit a guess for a challenge
-   * Validates the answer via AI, tracks attempts, enforces 10-attempt limit
+   * Validates the answer using pre-generated answer sets (local, instant)
+   * Tracks attempts, enforces 10-attempt limit
    */
   async submitGuess(
     userId: string,
@@ -153,26 +154,23 @@ export class AttemptService extends BaseService {
       // Increment attempts
       const newAttemptCount = attempt.attempts_made + 1;
 
-      // Validate answer with AI
+      // Get challenge with answer_set
       const challenge = await this.challengeRepo!.findById(challengeId);
       if (!challenge) {
         throw new Error('Challenge not found');
       }
 
-      // For attempt 7 only, fetch past guesses to help the AI generate a hint.
-      // For other attempts, we keep the prompt minimal for lower token usage.
-      let pastGuesses: string[] = [];
-      if (newAttemptCount === 7) {
-        const guesses = await this.attemptRepo.getGuessesByAttempt(attempt.id);
-        pastGuesses = guesses.map((g) => g.guess_text);
+      // Ensure challenge has answer_set
+      if (!challenge.answer_set) {
+        this.logError(
+          'AttemptService.submitGuess',
+          `Challenge ${challengeId} missing answer_set - challenge may need to be regenerated`
+        );
+        throw new Error('Challenge missing answer set');
       }
 
-      const validation = await this.aiValidationService.validateAnswer(
-        guess,
-        challenge,
-        newAttemptCount,
-        pastGuesses
-      );
+      // Validate answer using LOCAL answer set matching (instant, no AI call)
+      const validation = this.localValidationService.validateGuess(guess, challenge);
 
       // Store guess in history
       await this.attemptRepo.createGuess({

@@ -5,14 +5,15 @@
   "license": "BSD-3-Clause",
   "type": "module",
   "scripts": {
-    "deploy": "devvit upload",
     "dev": "dotenv -e .env -- devvit playtest",
     "login": "devvit login",
     "launch": "devvit publish",
     "type-check": "tsc --build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "predeploy": "npx ts-node scripts/predeploy.ts",
+    "deploy": "npm run predeploy && devvit upload"
   },
   "dependencies": {
     "@devvit/mcp": "^0.0.24",

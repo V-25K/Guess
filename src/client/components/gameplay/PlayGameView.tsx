@@ -190,6 +190,7 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
     null
   );
   const [showExplanation, setShowExplanation] = useState(false);
+  const [showRules, setShowRules] = useState(false);
 
   const handleEnlargeImage = (index: number) => {
     setEnlargedImageIndex(index);
@@ -207,6 +208,14 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
     setShowExplanation(false);
   };
 
+  const handleShowRules = () => {
+    setShowRules(true);
+  };
+
+  const handleCloseRules = () => {
+    setShowRules(false);
+  };
+
   // If showing explanation, render that view
   if (showExplanation) {
     return (
@@ -214,6 +223,105 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
         challenge={challenge}
         onBack={handleCloseExplanation}
       />
+    );
+  }
+
+  // If rules are shown, render the rules overlay
+  if (showRules) {
+    return (
+      <vstack
+        width="100%"
+        height="100%"
+        backgroundColor="rgba(0, 0, 0, 0.9)"
+        alignment="center middle"
+        onPress={handleCloseRules}
+        padding="medium"
+      >
+        <vstack
+          width="100%"
+          maxWidth="400px"
+          backgroundColor="#FFFFFF"
+          cornerRadius="medium"
+          padding="medium"
+          gap="medium"
+          onPress={() => { }} // Catch tap to prevent closing
+        >
+          {/* Header */}
+          <hstack width="100%" alignment="middle">
+            <text size="large" weight="bold" color="#1c1c1c">
+              How to Play
+            </text>
+            <spacer grow />
+            <button
+              onPress={handleCloseRules}
+              appearance="secondary"
+              size="small"
+              icon="close"
+            />
+          </hstack>
+
+          <vstack gap="small" width="100%">
+            <text size="medium" weight="bold" color="#2E7D32">
+              Game Rules
+            </text>
+            <vstack gap="small" width="100%">
+              <hstack gap="small" alignment="start middle">
+                <text size="medium">🔍</text>
+                <text size="small" color="#1c1c1c" wrap>
+                  Find the common link between the images.
+                </text>
+              </hstack>
+              <hstack gap="small" alignment="start middle">
+                <text size="medium">🎯</text>
+                <text size="small" color="#1c1c1c" wrap>
+                  You have 10 attempts to guess correctly.
+                </text>
+              </hstack>
+              <hstack gap="small" alignment="start middle">
+                <text size="medium">👆</text>
+                <text size="small" color="#1c1c1c" wrap>
+                  Tap any image to zoom in.
+                </text>
+              </hstack>
+            </vstack>
+          </vstack>
+
+          <vstack gap="small" width="100%">
+            <text size="medium" weight="bold" color="#F57C00">
+              Points System
+            </text>
+            <vstack gap="small" width="100%">
+              <hstack width="100%" alignment="middle">
+                <text size="small" weight="bold" color="#1c1c1c">Max Score</text>
+                <spacer grow />
+                <text size="small" color="#2E7D32">28 pts (1st Try)</text>
+              </hstack>
+              <hstack width="100%" alignment="middle">
+                <text size="small" weight="bold" color="#1c1c1c">Penalty</text>
+                <spacer grow />
+                <text size="small" color="#D32F2F">-2 pts / attempt</text>
+              </hstack>
+              <hstack width="100%" alignment="middle">
+                <text size="small" weight="bold" color="#1c1c1c">Min Score</text>
+                <spacer grow />
+                <text size="small" color="#F57C00">10 pts (10th Try)</text>
+              </hstack>
+              <text size="xsmall" color="#878a8c" wrap>
+                * Bonuses may apply for streaks and other achievements.
+              </text>
+            </vstack>
+          </vstack>
+
+          <button
+            onPress={handleCloseRules}
+            appearance="primary"
+            size="medium"
+            width="100%"
+          >
+            Got it!
+          </button>
+        </vstack>
+      </vstack>
     );
   }
 
@@ -260,12 +368,20 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
       <vstack gap="small" width="100%">
         {/* Top row: Back button and stats */}
         <hstack width="100%" alignment="middle">
-          <button
-            onPress={onBackToMenu}
-            appearance="primary"
-            size="small"
-            icon="back"
-          />
+          <hstack gap="small">
+            <button
+              onPress={onBackToMenu}
+              appearance="primary"
+              size="small"
+              icon="back"
+            />
+            <button
+              onPress={handleShowRules}
+              appearance="secondary"
+              size="small"
+              icon="help"
+            />
+          </hstack>
 
           <spacer grow />
 
@@ -305,22 +421,6 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
           </text>
           {isCompleted && <text size="medium">✅</text>}
         </hstack>
-
-        {/* Description (if provided) */}
-        {challenge.description && (
-          <vstack
-            width="100%"
-            padding="small"
-            backgroundColor="#FFFFFF"
-            cornerRadius="small"
-            border="thin"
-            borderColor="#E0E0E0"
-          >
-            <text size="small" color="#666666" wrap>
-              {challenge.description}
-            </text>
-          </vstack>
-        )}
 
         {/* Creator and tags in one line */}
         <hstack gap="small" alignment="middle" width="100%">
@@ -416,12 +516,12 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
               ? "#E8F5E9"
               : (isGameOver && !isCompleted) ||
                 (gameState.isGameOver && !gameState.isCorrect)
-              ? "#FFEBEE"
-              : isCreator
-              ? "#FFF4E6"
-              : isProcessing
-              ? "#FFF4E6"
-              : "#FFFFFF"
+                ? "#FFEBEE"
+                : isCreator
+                  ? "#FFF4E6"
+                  : isProcessing
+                    ? "#FFF4E6"
+                    : "#FFFFFF"
           }
           cornerRadius="medium"
           border="thin"
@@ -430,8 +530,8 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
               ? "#4CAF50"
               : (isGameOver && !isCompleted) ||
                 (gameState.isGameOver && !gameState.isCorrect)
-              ? "#D32F2F"
-              : "#E0E0E0"
+                ? "#D32F2F"
+                : "#E0E0E0"
           }
           gap="small"
         >

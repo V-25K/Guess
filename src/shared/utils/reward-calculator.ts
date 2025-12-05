@@ -87,14 +87,14 @@ export function calculateChallengeReward(
   if (imagesRevealed < 1) {
     throw new Error('Images revealed must be at least 1');
   }
-  
+
   if (!isSolved) {
     return REWARDS.SOLVE_FAILED;
   }
-  
+
   const points = Math.max(0, 25 - (imagesRevealed - 1) * 5);
   const exp = points;
-  
+
   return { points, exp };
 }
 
@@ -142,15 +142,15 @@ export function calculateAttemptReward(
   if (attemptsMade < 1 || attemptsMade > 10) {
     throw new Error('Attempts must be between 1 and 10');
   }
-  
+
   if (!isSolved) {
     return REWARDS.SOLVE_FAILED;
   }
-  
+
   // Base calculation: 28 - ((attempts - 1) × 2)
   const points = 28 - ((attemptsMade - 1) * 2);
   const exp = points; // 1:1 ratio
-  
+
   return { points, exp };
 }
 
@@ -163,7 +163,7 @@ export function calculateAttemptRewardWithBonuses(
   bonusContext: BonusContext
 ): RewardWithBonuses {
   const baseReward = calculateAttemptReward(attemptsMade, isSolved);
-  
+
   if (!isSolved) {
     return {
       ...baseReward,
@@ -174,7 +174,7 @@ export function calculateAttemptRewardWithBonuses(
   }
 
   const bonuses = calculateBonuses(bonusContext);
-  
+
   const bonusPoints = bonuses.reduce((sum, b) => sum + b.points, 0);
   const bonusExp = bonuses.reduce((sum, b) => sum + b.exp, 0);
 
@@ -193,7 +193,7 @@ export function calculateAttemptRewardWithBonuses(
 export function calculatePotentialScore(currentAttempts: number): number {
   const nextAttempt = currentAttempts + 1;
   if (nextAttempt > 10) return 0;
-  
+
   const { points } = calculateAttemptReward(nextAttempt, true);
   return points;
 }

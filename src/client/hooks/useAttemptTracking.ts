@@ -75,7 +75,7 @@ export function useAttemptTracking(): UseAttemptTrackingResult {
   // Initialize state with separate useState calls (Devvit pattern)
   const [attemptCount, setAttemptCount] = useState(0);
   const [attemptsRemaining, setAttemptsRemaining] = useState(10);
-  const [potentialScore, setPotentialScore] = useState(30);
+  const [potentialScore, setPotentialScore] = useState(28);
   const [isGameOver, setIsGameOver] = useState(false);
 
   /**
@@ -101,7 +101,7 @@ export function useAttemptTracking(): UseAttemptTrackingResult {
   const reset = (): void => {
     setAttemptCount(0);
     setAttemptsRemaining(10);
-    setPotentialScore(30);
+    setPotentialScore(28);
     setIsGameOver(false);
   };
 

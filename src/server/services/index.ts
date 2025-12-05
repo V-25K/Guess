@@ -10,5 +10,8 @@ export * from './challenge.service.js';
 export * from './attempt.service.js';
 export * from './comment.service.js';
 export * from './leaderboard.service.js';
-export * from './ai-validation.service.js';
+
+export * from './answer-set-generator.service.js';
+// Export local validation service with explicit type re-export to avoid ValidationResult conflict
+export { LocalValidationService, type LocalValidationResult } from './local-validation.service.js';
 export * from './preload.service.js';
