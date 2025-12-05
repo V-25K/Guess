@@ -154,7 +154,7 @@ export abstract class BaseService {
     } else if (level === 'warn') {
       console.warn(logString);
     } else {
-      console.log(logString);
+      // console.log(logString);
     }
   }
 

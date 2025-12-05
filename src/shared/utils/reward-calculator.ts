@@ -30,6 +30,32 @@ function createBonus(type: BonusType): Bonus {
 }
 
 /**
+ * Calculate penalty for using a hint based on total images and hint number (1-based index of usage)
+ */
+export function calculateHintPenalty(totalImages: number, hintNumber: number): number {
+  if (totalImages === 3) {
+    if (hintNumber === 1) return 7;
+    if (hintNumber === 2) return 6;
+    if (hintNumber === 3) return 5;
+  } else if (totalImages === 2) {
+    if (hintNumber === 1) return 10;
+    if (hintNumber === 2) return 8;
+  }
+  return 0;
+}
+
+/**
+ * Calculate total penalty for all hints used
+ */
+export function calculateTotalHintPenalty(totalImages: number, hintsUsedCount: number): number {
+  let penalty = 0;
+  for (let i = 1; i <= hintsUsedCount; i++) {
+    penalty += calculateHintPenalty(totalImages, i);
+  }
+  return penalty;
+}
+
+/**
  * Calculate all applicable bonuses for a challenge completion
  */
 export function calculateBonuses(context: BonusContext): Bonus[] {
@@ -137,7 +163,9 @@ export function getCreatorBonus(): Bonus {
  */
 export function calculateAttemptReward(
   attemptsMade: number,
-  isSolved: boolean
+  isSolved: boolean,
+  hintsUsedCount: number = 0,
+  totalImages: number = 3
 ): Reward {
   if (attemptsMade < 1 || attemptsMade > 10) {
     throw new Error('Attempts must be between 1 and 10');
@@ -148,7 +176,15 @@ export function calculateAttemptReward(
   }
 
   // Base calculation: 28 - ((attempts - 1) × 2)
-  const points = 28 - ((attemptsMade - 1) * 2);
+  let points = 28 - ((attemptsMade - 1) * 2);
+
+  // Deduct hints penalty
+  const hintPenalty = calculateTotalHintPenalty(totalImages, hintsUsedCount);
+  points -= hintPenalty;
+
+  // Cap at 0 (ensure non-negative)
+  points = Math.max(0, points);
+
   const exp = points; // 1:1 ratio
 
   return { points, exp };
@@ -160,9 +196,11 @@ export function calculateAttemptReward(
 export function calculateAttemptRewardWithBonuses(
   attemptsMade: number,
   isSolved: boolean,
-  bonusContext: BonusContext
+  bonusContext: BonusContext,
+  hintsUsedCount: number = 0,
+  totalImages: number = 3
 ): RewardWithBonuses {
-  const baseReward = calculateAttemptReward(attemptsMade, isSolved);
+  const baseReward = calculateAttemptReward(attemptsMade, isSolved, hintsUsedCount, totalImages);
 
   if (!isSolved) {
     return {
@@ -190,10 +228,14 @@ export function calculateAttemptRewardWithBonuses(
 /**
  * Calculate potential score for next attempt.
  */
-export function calculatePotentialScore(currentAttempts: number): number {
+export function calculatePotentialScore(
+  currentAttempts: number,
+  hintsUsedCount: number = 0,
+  totalImages: number = 3
+): number {
   const nextAttempt = currentAttempts + 1;
   if (nextAttempt > 10) return 0;
 
-  const { points } = calculateAttemptReward(nextAttempt, true);
+  const { points } = calculateAttemptReward(nextAttempt, true, hintsUsedCount, totalImages);
   return points;
 }

@@ -57,6 +57,7 @@ export class AttemptService extends BaseService {
           points_earned: 0,
           experience_earned: 0,
           completed_at: null,
+          hints_used: [],
         };
 
         const attempt = await this.attemptRepo.create(attemptData);
@@ -199,7 +200,9 @@ export class AttemptService extends BaseService {
             isFirstClear,
             currentStreak,
             attemptsMade: newAttemptCount,
-          }
+          },
+          attempt.hints_used ? attempt.hints_used.length : 0,
+          challenge.image_url.split(',').length
         );
 
         // Record completion with total points (base + bonuses)
@@ -264,7 +267,11 @@ export class AttemptService extends BaseService {
 
       // Incorrect but still has attempts
       const attemptsRemaining = 10 - newAttemptCount;
-      const potentialScore = calculatePotentialScore(newAttemptCount);
+      const potentialScore = calculatePotentialScore(
+        newAttemptCount,
+        attempt.hints_used ? attempt.hints_used.length : 0,
+        challenge.image_url.split(',').length
+      );
 
       return {
         isCorrect: false,
@@ -357,6 +364,95 @@ export class AttemptService extends BaseService {
       },
       'Failed to record completion'
     );
+  }
+
+  /**
+   * Reveal a hint for a specific image index
+   * Deducts points from user's total_points
+   * Returns detailed result with success/error information
+   */
+  async revealHint(
+    userId: string,
+    challengeId: string,
+    imageIndex: number,
+    hintCost: number
+  ): Promise<{ success: boolean; attempt?: ChallengeAttempt; error?: string; newTotalPoints?: number }> {
+    try {
+      // First, get user's current points
+      const userProfile = await this.userService.getUserProfile(userId);
+
+      if (!userProfile) {
+        return { success: false, error: 'User not found' };
+      }
+
+      // Check if user has enough points
+      if (userProfile.total_points < hintCost) {
+        return {
+          success: false,
+          error: `Not enough points. You have ${userProfile.total_points} points but need ${hintCost}.`
+        };
+      }
+
+      let attempt = await this.attemptRepo.findByUserAndChallenge(userId, challengeId);
+
+      // If no attempt exists, create one
+      if (!attempt) {
+        const createSuccess = await this.recordAttempt(userId, challengeId);
+
+        if (createSuccess) {
+          attempt = await this.attemptRepo.findByUserAndChallenge(userId, challengeId);
+        }
+      }
+
+      if (!attempt) {
+        return { success: false, error: 'Failed to create attempt' };
+      }
+
+      // Initialize hints_used if null
+      const hintsUsed = attempt.hints_used || [];
+
+      // If already revealed, return current attempt (no point deduction)
+      if (hintsUsed.includes(imageIndex)) {
+        return {
+          success: true,
+          attempt,
+          newTotalPoints: userProfile.total_points
+        };
+      }
+
+      // Deduct points from user's total
+      const deductSuccess = await this.userService.deductPoints(userId, hintCost);
+
+      if (!deductSuccess) {
+        return { success: false, error: 'Failed to deduct points' };
+      }
+
+      // Add index to hints_used
+      const newHintsUsed = [...hintsUsed, imageIndex];
+
+      // Update attempt
+      const updateSuccess = await this.attemptRepo.updateAttempt(attempt.id, {
+        hints_used: newHintsUsed
+      });
+
+      if (updateSuccess) {
+        const newTotalPoints = userProfile.total_points - hintCost;
+        this.logInfo(
+          'AttemptService',
+          `User ${userId} revealed hint ${imageIndex} for challenge ${challengeId}, spent ${hintCost} points. New balance: ${newTotalPoints}`
+        );
+        return {
+          success: true,
+          attempt: { ...attempt, hints_used: newHintsUsed },
+          newTotalPoints
+        };
+      }
+
+      return { success: false, error: 'Failed to update attempt' };
+    } catch (error) {
+      this.logError('AttemptService.revealHint', error);
+      return { success: false, error: 'Failed to reveal hint' };
+    }
   }
 
   /**

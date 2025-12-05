@@ -57,7 +57,7 @@ export class UserService extends BaseService {
     try {
       const cacheKey = this.createProfileCacheKey(userId);
       const value = await this.redis.get(cacheKey);
-      
+
       if (!value) {
         return null;
       }
@@ -77,7 +77,7 @@ export class UserService extends BaseService {
     try {
       const cacheKey = this.createProfileCacheKey(userId);
       const serialized = JSON.stringify(profile);
-      
+
       await this.redis.set(cacheKey, serialized, {
         expiration: new Date(Date.now() + PROFILE_CACHE_TTL),
       });
@@ -323,7 +323,7 @@ export class UserService extends BaseService {
           // Invalidate profile cache AND update leaderboard atomically (Requirements: 6.2)
           // Both operations must complete before returning
           await this.invalidateCacheAndUpdateLeaderboard(userId, points);
-          
+
           this.logInfo(
             'UserService',
             `Awarded ${points} points and ${experience} exp to user ${userId}`
@@ -333,6 +333,71 @@ export class UserService extends BaseService {
         return success;
       },
       'Failed to award points'
+    );
+  }
+
+  /**
+   * Deduct points from a user's total (for hint purchases)
+   * Similar to awardPoints but with negative value
+   * Invalidates profile cache AND updates leaderboard sorted set atomically.
+   * 
+   * Requirements: 6.2
+   */
+  async deductPoints(userId: string, points: number): Promise<boolean> {
+    return this.withBooleanErrorHandling(
+      async () => {
+        // Use retry logic for fetching profile
+        const profile = await this.withRetry(
+          () => this.userRepo.findById(userId),
+          {
+            maxRetries: 3,
+            exponentialBackoff: true,
+          }
+        );
+
+        if (!profile) {
+          this.logError('UserService.deductPoints', `Profile not found for user ${userId}`);
+          return false;
+        }
+
+        // Check if user has enough points
+        if (profile.total_points < points) {
+          this.logError('UserService.deductPoints', `User ${userId} has insufficient points: ${profile.total_points} < ${points}`);
+          return false;
+        }
+
+        const newTotalPoints = profile.total_points - points;
+
+        const success = await this.withRetry(
+          () => this.userRepo.updateProfile(userId, {
+            total_points: newTotalPoints,
+          }),
+          {
+            maxRetries: 3,
+            exponentialBackoff: true,
+            onRetry: (attempt, error) => {
+              this.logWarning(
+                'UserService.deductPoints',
+                `Profile update attempt ${attempt} failed: ${error.message}`
+              );
+            },
+          }
+        );
+
+        if (success) {
+          // Invalidate profile cache AND update leaderboard atomically (Requirements: 6.2)
+          // Use negative delta for leaderboard
+          await this.invalidateCacheAndUpdateLeaderboard(userId, -points);
+
+          this.logInfo(
+            'UserService',
+            `Deducted ${points} points from user ${userId}. New balance: ${newTotalPoints}`
+          );
+        }
+
+        return success;
+      },
+      'Failed to deduct points'
     );
   }
 

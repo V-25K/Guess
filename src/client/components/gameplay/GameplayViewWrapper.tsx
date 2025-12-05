@@ -58,6 +58,8 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     playersCompleted: number;
     uniquePlayerCount: number;
     bonuses: Array<{ type: string; points: number; exp: number; label: string }>;
+    hintsUsed: number[];
+    userTotalPoints: number;
   }>({
     attemptCount: 0,
     attemptsRemaining: 10,
@@ -68,13 +70,19 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     playersCompleted: currentChallenge?.players_completed || 0,
     uniquePlayerCount: currentChallenge?.players_played || 0,
     bonuses: [],
+    hintsUsed: [],
+    userTotalPoints: 0,
   });
 
   // Trigger state for answer submission (useAsync pattern)
   const [submittedGuess, setSubmittedGuess] = useState<string | null>(null);
 
+  // State to track hint reveal in progress
+  const [isRevealingHint, setIsRevealingHint] = useState(false);
+
   // Polyfill for useRef since it's not available in this version
   const [isProcessingRef] = useState<{ current: boolean }>({ current: false });
+
 
   // Check for existing attempt status and fresh challenge data
   const { data: loadData, loading: checkingCompletion } = useAsync(async () => {
@@ -86,22 +94,27 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     const userService = new UserService(context, userRepo);
     const attemptService = new AttemptService(context, attemptRepo, userService);
 
-    // Fetch attempt and fresh challenge data in parallel
-    const [attempt, challenge] = await Promise.all([
+    // Fetch attempt, challenge, and user profile in parallel
+    const [attempt, challenge, userProfile] = await Promise.all([
       attemptService.getAttempt(userId, currentChallenge.id),
-      challengeRepo.findById(currentChallenge.id)
+      challengeRepo.findById(currentChallenge.id),
+      userService.getUserProfile(userId)
     ]);
 
-    return { attempt, challenge };
+    return { attempt, challenge, userProfile };
   }, {
     depends: [currentChallenge?.id || '', userId],
     finally: (data) => {
       // Guard: Don't update state if we are currently processing a guess
       if (isProcessingRef.current) return;
 
-      if (data && data.attempt) {
+      if (data && data.attempt && data.challenge) {
         // Calculate potential score for NEXT attempt
-        const potentialScore = calculatePotentialScore(data.attempt.attempts_made);
+        const potentialScore = calculatePotentialScore(
+          data.attempt.attempts_made,
+          data.attempt.hints_used ? data.attempt.hints_used.length : 0,
+          data.challenge.image_url.split(',').length
+        );
 
         setGameState({
           attemptCount: data.attempt.attempts_made,
@@ -117,6 +130,8 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
           playersCompleted: data.challenge?.players_completed || currentChallenge?.players_completed || 0,
           uniquePlayerCount: data.challenge?.players_played || currentChallenge?.players_played || 0,
           bonuses: [],
+          hintsUsed: data.attempt.hints_used || [],
+          userTotalPoints: data.userProfile?.total_points || 0,
         });
       } else if (data && !data.attempt) {
         // No attempt yet, but update challenge stats
@@ -130,6 +145,8 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
           isCorrect: false,
           playersCompleted: data.challenge?.players_completed || currentChallenge?.players_completed || 0,
           uniquePlayerCount: data.challenge?.players_played || currentChallenge?.players_played || 0,
+          hintsUsed: [],
+          userTotalPoints: data.userProfile?.total_points || 0,
         }));
       }
     }
@@ -273,6 +290,45 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
     context.ui.showForm(answerForm);
   };
 
+  const handleRevealHint = async (imageIndex: number, hintCost: number) => {
+    if (!currentChallenge || !userId || isRevealingHint) return;
+
+    setIsRevealingHint(true);
+
+    try {
+      // Create service
+      const attemptRepo = new AttemptRepository(context);
+      const userRepo = new UserRepository(context);
+      const userService = new UserService(context, userRepo);
+      const attemptService = new AttemptService(context, attemptRepo, userService);
+
+      // Call service with hint cost
+      const result = await attemptService.revealHint(userId, currentChallenge.id, imageIndex, hintCost);
+
+      if (result.success && result.attempt) {
+        // Calculate new potential score
+        const potentialScore = calculatePotentialScore(
+          result.attempt.attempts_made,
+          result.attempt.hints_used ? result.attempt.hints_used.length : 0,
+          currentChallenge.image_url.split(',').length
+        );
+
+        setGameState(prev => ({
+          ...prev,
+          hintsUsed: result.attempt!.hints_used || [],
+          potentialScore: potentialScore,
+          userTotalPoints: result.newTotalPoints ?? prev.userTotalPoints,
+        }));
+
+        context.ui.showToast(`Hint revealed! -${hintCost} points`);
+      } else {
+        context.ui.showToast(result.error || "Failed to reveal hint.");
+      }
+    } finally {
+      setIsRevealingHint(false);
+    }
+  };
+
   // Check if current user is the creator
   const isCreator = currentChallenge ? userId === currentChallenge.creator_id : false;
 
@@ -354,6 +410,10 @@ export const GameplayViewWrapper: Devvit.BlockComponent<GameplayViewWrapperProps
       uniquePlayerCount={gameState.uniquePlayerCount}
       playersCompleted={gameState.playersCompleted}
       isLoadingNext={isLoadingNext}
+      hintsUsed={gameState.hintsUsed}
+      onRevealHint={handleRevealHint}
+      userTotalPoints={gameState.userTotalPoints}
+      isRevealingHint={isRevealingHint}
     />
   );
 };

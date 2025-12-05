@@ -60,6 +60,10 @@ export interface PlayGameViewProps {
   uniquePlayerCount: number;
   playersCompleted: number;
   isLoadingNext?: boolean;
+  hintsUsed?: number[];
+  onRevealHint?: (imageIndex: number, hintCost: number) => Promise<void> | void;
+  userTotalPoints?: number;
+  isRevealingHint?: boolean;
 }
 
 /**
@@ -185,12 +189,17 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
   uniquePlayerCount,
   playersCompleted,
   isLoadingNext = false,
+  hintsUsed = [],
+  onRevealHint,
+  userTotalPoints = 0,
+  isRevealingHint = false,
 }) => {
   const [enlargedImageIndex, setEnlargedImageIndex] = useState<number | null>(
     null
   );
   const [showExplanation, setShowExplanation] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showHints, setShowHints] = useState(false);
 
   const handleEnlargeImage = (index: number) => {
     setEnlargedImageIndex(index);
@@ -214,6 +223,55 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
 
   const handleCloseRules = () => {
     setShowRules(false);
+  };
+
+  const handleShowHints = () => {
+    setShowHints(true);
+  };
+
+  const handleCloseHints = () => {
+    setShowHints(false);
+    setPendingHintIndex(null);
+  };
+
+  // State for hint confirmation
+  const [pendingHintIndex, setPendingHintIndex] = useState<number | null>(null);
+
+  const handleRequestHint = (index: number) => {
+    if (isRevealingHint) return; // Prevent if already revealing
+    setPendingHintIndex(index);
+  };
+
+  const handleConfirmHint = () => {
+    if (pendingHintIndex === null || !onRevealHint || isRevealingHint) return;
+
+    const hintCost = getNextHintCost();
+    const indexToReveal = pendingHintIndex;
+
+    // Close dialog immediately
+    setPendingHintIndex(null);
+
+    // Call parent handler - parent manages the async and loading state
+    onRevealHint(indexToReveal, hintCost);
+  };
+
+  const handleCancelHint = () => {
+    setPendingHintIndex(null);
+  };
+
+  // Calculate cost for the next hint
+  const getNextHintCost = (): number => {
+    const imageCount = challenge.images.length;
+    const hintsCount = hintsUsed.length;
+
+    if (imageCount === 3) {
+      if (hintsCount === 0) return 7;
+      if (hintsCount === 1) return 6;
+      return 5;
+    } else {
+      if (hintsCount === 0) return 10;
+      return 8;
+    }
   };
 
   // If showing explanation, render that view
@@ -251,13 +309,6 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
             <text size="large" weight="bold" color="#1c1c1c">
               How to Play
             </text>
-            <spacer grow />
-            <button
-              onPress={handleCloseRules}
-              appearance="secondary"
-              size="small"
-              icon="close"
-            />
           </hstack>
 
           <vstack gap="small" width="100%">
@@ -306,8 +357,33 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
                 <spacer grow />
                 <text size="small" color="#F57C00">10 pts (10th Try)</text>
               </hstack>
+            </vstack>
+          </vstack>
+
+          <vstack gap="small" width="100%">
+            <text size="medium" weight="bold" color="#D32F2F">
+              Hint System
+            </text>
+            <vstack gap="small" width="100%">
+              <text size="small" color="#1c1c1c" wrap>
+                Reveal image descriptions if you're stuck!
+              </text>
+              <text size="xsmall" weight="bold" color="#1c1c1c">3 Image Challenges:</text>
+              <hstack width="100%" alignment="middle">
+                <text size="xsmall" color="#1c1c1c">1st hint: -7 pts</text>
+                <spacer grow />
+                <text size="xsmall" color="#1c1c1c">2nd: -6 pts</text>
+                <spacer grow />
+                <text size="xsmall" color="#1c1c1c">3rd: -5 pts</text>
+              </hstack>
+              <text size="xsmall" weight="bold" color="#1c1c1c">2 Image Challenges:</text>
+              <hstack width="100%" alignment="middle">
+                <text size="xsmall" color="#1c1c1c">1st hint: -10 pts</text>
+                <spacer grow />
+                <text size="xsmall" color="#1c1c1c">2nd: -8 pts</text>
+              </hstack>
               <text size="xsmall" color="#878a8c" wrap>
-                * Bonuses may apply for streaks and other achievements.
+                * Score cannot go below zero.
               </text>
             </vstack>
           </vstack>
@@ -319,6 +395,161 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
             width="100%"
           >
             Got it!
+          </button>
+        </vstack >
+      </vstack >
+    );
+  }
+
+  // If hints are shown, render the hints overlay
+  if (showHints) {
+    return (
+      <vstack
+        width="100%"
+        height="100%"
+        backgroundColor="rgba(0, 0, 0, 0.9)"
+        alignment="center middle"
+        padding="medium"
+      >
+        <vstack
+          width="100%"
+          maxWidth="400px"
+          backgroundColor="#FFFFFF"
+          cornerRadius="medium"
+          padding="medium"
+          gap="medium"
+        >
+          {/* Header */}
+          <hstack width="100%" alignment="middle">
+            <text size="large" weight="bold" color="#1c1c1c">
+              Hints
+            </text>
+          </hstack>
+
+          <vstack gap="small" width="100%">
+            <text size="small" color="#1c1c1c" wrap>
+              Reveal hints for each image. Warning: This will deduct points!
+            </text>
+            <vstack gap="small" width="100%">
+              {challenge.images.map((image: any, index: number) => {
+                const isRevealed = hintsUsed.includes(index);
+                const imageCount = challenge.images.length;
+                let positionLabel = `Image ${index + 1}`;
+
+                if (imageCount === 3) {
+                  if (index === 0) positionLabel = "Left Image";
+                  else if (index === 1) positionLabel = "Middle Image";
+                  else if (index === 2) positionLabel = "Right Image";
+                } else if (imageCount === 2) {
+                  if (index === 0) positionLabel = "Left Image";
+                  else if (index === 1) positionLabel = "Right Image";
+                }
+
+                return (
+                  <vstack key={`hint-dialog-${index}`} width="100%" gap="small" padding="small" backgroundColor="#F5F5F5" cornerRadius="small">
+                    <hstack width="100%" alignment="middle">
+                      <text size="medium" weight="bold" color="#1c1c1c">{positionLabel}</text>
+                      <spacer grow />
+                      {isRevealed ? (
+                        <text size="small" color="#2E7D32" weight="bold">Revealed</text>
+                      ) : (
+                        <button
+                          onPress={() => handleRequestHint(index)}
+                          appearance="secondary"
+                          size="small"
+                          disabled={potentialScore <= 0 || isProcessing || isRevealingHint || pendingHintIndex !== null}
+                        >
+                          Reveal
+                        </button>
+                      )}
+                    </hstack>
+                    {isRevealed && (
+                      <text size="small" color="#1c1c1c" wrap>
+                        {image.description || "No description available."}
+                      </text>
+                    )}
+                  </vstack>
+                );
+              })}
+            </vstack>
+          </vstack>
+
+          {/* Confirmation Dialog */}
+          {pendingHintIndex !== null && (
+            <vstack
+              width="100%"
+              padding="medium"
+              backgroundColor={userTotalPoints >= getNextHintCost() ? "#FFF3E0" : "#FFEBEE"}
+              cornerRadius="medium"
+              border="thin"
+              borderColor={userTotalPoints >= getNextHintCost() ? "#FF9800" : "#D32F2F"}
+              gap="small"
+            >
+              <text size="medium" weight="bold" color={userTotalPoints >= getNextHintCost() ? "#E65100" : "#D32F2F"}>
+                {userTotalPoints >= getNextHintCost() ? "⚠️ Confirm Hint Reveal" : "❌ Not Enough Points"}
+              </text>
+              <hstack width="100%" alignment="middle">
+                <text size="small" color="#1c1c1c">Your balance:</text>
+                <spacer grow />
+                <text size="small" weight="bold" color={userTotalPoints >= getNextHintCost() ? "#2E7D32" : "#D32F2F"}>
+                  {userTotalPoints} pts
+                </text>
+              </hstack>
+              <hstack width="100%" alignment="middle">
+                <text size="small" color="#1c1c1c">Hint cost:</text>
+                <spacer grow />
+                <text size="small" weight="bold" color="#D32F2F">
+                  -{getNextHintCost()} pts
+                </text>
+              </hstack>
+              {userTotalPoints >= getNextHintCost() ? (
+                <hstack width="100%" alignment="middle">
+                  <text size="small" color="#1c1c1c">After reveal:</text>
+                  <spacer grow />
+                  <text size="small" weight="bold" color="#1c1c1c">
+                    {userTotalPoints - getNextHintCost()} pts
+                  </text>
+                </hstack>
+              ) : (
+                <text size="small" color="#D32F2F" wrap>
+                  You need {getNextHintCost() - userTotalPoints} more points to use this hint.
+                </text>
+              )}
+              <hstack gap="small" width="100%">
+                <button
+                  onPress={handleCancelHint}
+                  appearance="secondary"
+                  size="small"
+                  grow
+                  disabled={isRevealingHint}
+                >
+                  Cancel
+                </button>
+                <button
+                  onPress={handleConfirmHint}
+                  appearance="primary"
+                  size="small"
+                  grow
+                  disabled={userTotalPoints < getNextHintCost() || isRevealingHint}
+                >
+                  {isRevealingHint
+                    ? "Revealing..."
+                    : userTotalPoints >= getNextHintCost()
+                      ? `Yes, Reveal (-${getNextHintCost()} pts)`
+                      : "Not Enough Points"}
+                </button>
+              </hstack>
+            </vstack>
+          )}
+
+          <button
+            onPress={handleCloseHints}
+            appearance="primary"
+            size="medium"
+            width="100%"
+            disabled={pendingHintIndex !== null}
+          >
+            Close
           </button>
         </vstack>
       </vstack>
@@ -452,7 +683,6 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
       {/* Image Grid */}
       <ImageGrid images={challenge.images} onEnlarge={handleEnlargeImage} />
 
-      {/* Image hint text */}
       <hstack
         width="100%"
         alignment="center middle"
@@ -463,6 +693,20 @@ export const PlayGameView: Devvit.BlockComponent<PlayGameViewProps> = ({
           Tap any image to view it larger
         </text>
       </hstack>
+
+      {/* Hints Button */}
+      {!gameState.isGameOver && !isCompleted && !isGameOver && !isCreator && (
+        <vstack width="100%" alignment="center middle" padding="small">
+          <button
+            onPress={handleShowHints}
+            appearance="secondary"
+            size="medium"
+            icon="views"
+          >
+            Show Hints
+          </button>
+        </vstack>
+      )}
 
       {/* Low-attempt warning */}
       {attemptsRemaining <= 3 &&

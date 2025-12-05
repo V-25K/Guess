@@ -36,6 +36,7 @@ const createMockUserService = () => ({
     incrementStreak: vi.fn(),
     resetStreak: vi.fn(),
     awardPoints: vi.fn(),
+    deductPoints: vi.fn(),
     invalidateUserCache: vi.fn(),
 });
 
@@ -58,6 +59,7 @@ const createTestAttempt = (overrides?: Partial<ChallengeAttempt>): ChallengeAtte
     experience_earned: 0,
     attempted_at: new Date().toISOString(),
     completed_at: null,
+    hints_used: [],
     ...overrides,
 });
 

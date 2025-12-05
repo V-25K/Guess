@@ -21,9 +21,12 @@ export type ChallengeAttempt = {
   experience_earned: number;
   attempted_at: string;
   completed_at: string | null;
+  hints_used: number[];
 };
 
-export type ChallengeAttemptCreate = Omit<ChallengeAttempt, 'id' | 'attempted_at'>;
+export type ChallengeAttemptCreate = Omit<ChallengeAttempt, 'id' | 'attempted_at' | 'hints_used'> & {
+  hints_used?: number[];
+};
 
 export type ChallengeAttemptUpdate = Partial<Omit<ChallengeAttempt, 'id' | 'user_id' | 'challenge_id' | 'attempted_at'>>;
 
