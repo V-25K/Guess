@@ -50,3 +50,7 @@ coverage/
 *.tmp
 *.temp
 .gemini
+
+# Generated/temporary analysis files
+refactor-summary.json
+*-summary.json

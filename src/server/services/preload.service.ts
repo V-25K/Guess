@@ -8,7 +8,7 @@
  * Requirements: 2.1, 2.2, 2.3, 2.4
  */
 
-import type { Challenge, GameChallenge } from '../../shared/models/challenge.types.js';
+import type { Challenge } from '../../shared/models/challenge.types.js';
 
 /**
  * Minimal interface for preloadable challenges

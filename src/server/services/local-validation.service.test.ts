@@ -6,7 +6,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LocalValidationService, LocalValidationResult } from './local-validation.service.js';
 import type { Challenge } from '../../shared/models/challenge.types.js';
-import type { Context } from '@devvit/public-api';
+import type { Context } from '@devvit/server/server-context';
 
 // Mock context
 const createMockContext = (): Context => ({

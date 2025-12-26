@@ -1,0 +1,47 @@
+%%{init: {'theme': 'base'}}%%
+
+sequenceDiagram
+    participant U as User
+    participant UI as GameplayView
+    participant R as useGameReducer
+    participant API as ApiClient
+    participant S as Server
+    participant DB as Redis
+    
+    Note over U,DB: Game Start
+    U->>UI: Open Challenge
+    UI->>R: dispatch(SET_VIEW, 'gameplay')
+    R->>API: getChallenge(id)
+    API->>S: GET /api/challenges/:id
+    S->>DB: Get challenge data
+    DB-->>S: Challenge
+    S-->>API: GameChallenge
+    API-->>R: Update state
+    R-->>UI: Render challenge
+    
+    Note over U,DB: Submit Guess
+    U->>UI: Enter guess
+    UI->>R: submitGuess(guess)
+    R->>API: submitGuess(challengeId, guess)
+    API->>S: POST /api/attempts/submit
+    S->>DB: Validate & store attempt
+    DB-->>S: AttemptResult
+    S-->>API: Result
+    API-->>R: Update state
+    R-->>UI: Show feedback
+    
+    alt Correct Answer
+        UI->>UI: Show success animation
+        UI->>R: dispatch(UPDATE_SCORE)
+        R->>API: getUserProfile()
+        API-->>R: Updated profile
+    else Wrong Answer
+        UI->>UI: Show error feedback
+        UI->>UI: Decrement attempts
+    end
+    
+    Note over U,DB: Next Challenge
+    U->>UI: Click "Next"
+    UI->>R: nextChallenge()
+    R->>R: Increment challenge index
+    R-->>UI: Render next challenge

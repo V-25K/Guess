@@ -1,25 +1,127 @@
 {
   "$schema": "https://developers.reddit.com/schema/config-file.v1.json",
   "name": "guess-the-1ink",
-  "blocks": {
-    "entry": "src/client/main.tsx",
-    "triggers": ["onCommentSubmit"]
+  "post": {
+    "dir": "dist/client",
+    "entrypoints": {
+      "default": {
+        "entry": "index.html",
+        "height": "tall",
+        "inline": true
+      },
+      "expanded": {
+        "entry": "index.html",
+        "inline": false
+      },
+      "profile": {
+        "entry": "entries/profile.html",
+        "inline": false
+      },
+      "leaderboard": {
+        "entry": "entries/leaderboard.html",
+        "inline": false
+      },
+      "awards": {
+        "entry": "entries/awards.html",
+        "inline": false
+      },
+      "create": {
+        "entry": "entries/create.html",
+        "inline": false
+      }
+    }
+  },
+  "server": {
+    "entry": "index.cjs"
   },
   "media": {
     "dir": "assets/"
   },
   "permissions": {
     "http": {
+      "enable": true,
       "domains": [
         "generativelanguage.googleapis.com",
         "jqgithkiinvgcpskwado.supabase.co"
       ]
     },
+    "media": true,
     "redis": true,
     "reddit": {
+      "enable": true,
+      "scope": "user",
       "asUser": [
         "SUBSCRIBE_TO_SUBREDDIT"
       ]
+    }
+  },
+  "settings": {
+    "global": {
+      "supabaseUrl": {
+        "type": "string",
+        "label": "Supabase URL"
+      },
+      "supabaseAnonKey": {
+        "type": "string",
+        "label": "Supabase Anon Key",
+        "isSecret": true
+      },
+      "internalApiToken": {
+        "type": "string",
+        "label": "Internal API Token",
+        "isSecret": true
+      },
+      "GEMINI_API_KEY": {
+        "type": "string",
+        "label": "Gemini API Key",
+        "isSecret": true
+      }
+    }
+  },
+  "triggers": {
+    "onCommentSubmit": "/internal/triggers/comment-submit"
+  },
+  "menu": {
+    "items": [
+      {
+        "label": "Create Test Post",
+        "description": "Create a test post with the Guess The Link game",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/menu/create-test-post"
+      },
+      {
+        "label": "Open Profile",
+        "location": "post",
+        "endpoint": "/internal/menu/open-profile"
+      },
+      {
+        "label": "Open Leaderboard",
+        "location": "post",
+        "endpoint": "/internal/menu/open-leaderboard"
+      },
+      {
+        "label": "Open Awards",
+        "location": "post",
+        "endpoint": "/internal/menu/open-awards"
+      },
+      {
+        "label": "Create Challenge",
+        "location": "post",
+        "endpoint": "/internal/menu/open-create"
+      }
+    ]
+  },
+  "scheduler": {
+    "tasks": {
+      "cache-warming": {
+        "endpoint": "/internal/scheduler/cache-warming",
+        "cron": "*/5 * * * *"
+      },
+      "leaderboard-refresh": {
+        "endpoint": "/internal/scheduler/leaderboard-refresh",
+        "cron": "*/10 * * * *"
+      }
     }
   }
 }

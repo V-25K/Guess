@@ -4,9 +4,12 @@
  * This runs ONCE during challenge creation to avoid per-guess AI costs
  */
 
-import type { Context } from "@devvit/public-api";
+import type { Context } from "@devvit/server/server-context";
+import { settings } from "@devvit/web/server";
 import { BaseService } from "./base.service.js";
 import type { Challenge, ChallengeCreate } from "../../shared/models/challenge.types.js";
+import { ok, err, type Result } from "../../shared/utils/result.js";
+import { internalError, externalApiError, type AppError } from "../../shared/models/errors.js";
 
 /**
  * AnswerSet Type
@@ -35,8 +38,7 @@ export class AnswerSetGeneratorService extends BaseService {
     /**
      * Generate answer set for a challenge using AI
      * @param challenge - The challenge data (before insertion to DB)
-     * @returns AnswerSet with correct and close answer arrays
-     * @throws Error if AI generation fails after retries
+     * @returns Result containing AnswerSet with correct and close answer arrays
      */
     async generateAnswerSet(
         challenge: ChallengeCreate | Challenge
@@ -48,7 +50,7 @@ export class AnswerSetGeneratorService extends BaseService {
             );
 
             // Try AI generation with retry logic
-            const answerSet = await this.withRetry(
+            const result = await this.withRetry(
                 () => this.generateWithAI(challenge),
                 {
                     maxRetries: this.MAX_RETRIES,
@@ -57,6 +59,13 @@ export class AnswerSetGeneratorService extends BaseService {
                 }
             );
 
+            // If AI generation failed, use fallback
+            if (!result.ok) {
+                this.logWarning("AnswerSetGenerator", "AI generation failed, using fallback");
+                return this.getFallbackAnswerSet(challenge);
+            }
+
+            const answerSet = result.value;
             this.logInfo(
                 "AnswerSetGenerator",
                 `Generated answer set: ${answerSet.correct.length} correct, ${answerSet.close.length} close`
@@ -66,7 +75,7 @@ export class AnswerSetGeneratorService extends BaseService {
         } catch (error) {
             this.logError(
                 "AnswerSetGenerator",
-                `AI generation failed: ${error instanceof Error ? error.message : String(error)}`
+                `Unexpected error in generateAnswerSet: ${error instanceof Error ? error.message : String(error)}`
             );
 
             // Fall back to basic answer set
@@ -80,14 +89,13 @@ export class AnswerSetGeneratorService extends BaseService {
      */
     private async generateWithAI(
         challenge: ChallengeCreate | Challenge
-    ): Promise<AnswerSet> {
+    ): Promise<Result<AnswerSet, AppError>> {
         // Get Gemini API key from settings
-        const settings = await this.context.settings.getAll();
-        const apiKey = settings["GEMINI_API_KEY"] as string;
+        const apiKey = await settings.get("GEMINI_API_KEY") as string;
 
         if (!apiKey) {
             this.logError("AnswerSetGenerator", "GEMINI_API_KEY not configured");
-            throw new Error("AI generation not configured");
+            return err(internalError("AI generation not configured"));
         }
 
         // Build the prompt
@@ -138,9 +146,9 @@ export class AnswerSetGeneratorService extends BaseService {
             clearTimeout(timeoutId);
             if (fetchError.name === "AbortError") {
                 this.logError("AnswerSetGenerator", "API request timed out after 20 seconds");
-                throw new Error("API request timed out");
+                return err(externalApiError("Gemini API", "Request timed out after 20 seconds"));
             }
-            throw fetchError;
+            return err(externalApiError("Gemini API", fetchError.message || String(fetchError)));
         } finally {
             clearTimeout(timeoutId);
         }
@@ -151,7 +159,7 @@ export class AnswerSetGeneratorService extends BaseService {
                 "AnswerSetGenerator",
                 `API request failed with status ${response.status}: ${errorBody}`
             );
-            throw new Error(`API request failed: ${response.status}`);
+            return err(externalApiError("Gemini API", `Request failed: ${errorBody}`, response.status));
         }
 
         // Parse and validate response
@@ -233,12 +241,12 @@ Creator Context: ${explanation}`;
     /**
      * Parse and validate the AI response
      */
-    private parseAndValidateResponse(result: any): AnswerSet {
+    private parseAndValidateResponse(result: any): Result<AnswerSet, AppError> {
         const candidate = result?.candidates?.[0];
 
         if (!candidate) {
             this.logError("AnswerSetGenerator", "No candidates returned from API");
-            throw new Error("Invalid API response");
+            return err(externalApiError("Gemini API", "No candidates returned from API"));
         }
 
         // Check finish reason
@@ -251,14 +259,14 @@ Creator Context: ${explanation}`;
                 "AnswerSetGenerator",
                 `Generation stopped early: ${candidate.finishReason}`
             );
-            throw new Error(`Generation stopped early: ${candidate.finishReason}`);
+            return err(externalApiError("Gemini API", `Generation stopped early: ${candidate.finishReason}`));
         }
 
         // Extract JSON payload
         const jsonText = this.extractJsonPayload(result);
         if (!jsonText) {
             this.logError("AnswerSetGenerator", "No response text from API");
-            throw new Error("Invalid API response");
+            return err(externalApiError("Gemini API", "No response text from API"));
         }
 
         // Parse JSON
@@ -267,16 +275,16 @@ Creator Context: ${explanation}`;
             parsed = JSON.parse(jsonText);
         } catch (parseError) {
             this.logError("AnswerSetGenerator", "Failed to parse JSON response");
-            throw new Error("Invalid JSON response from API");
+            return err(externalApiError("Gemini API", "Invalid JSON response from API"));
         }
 
         // Validate structure
         if (!parsed || typeof parsed !== "object") {
-            throw new Error("Invalid response structure");
+            return err(externalApiError("Gemini API", "Invalid response structure"));
         }
 
         if (!Array.isArray(parsed.correct) || !Array.isArray(parsed.close)) {
-            throw new Error("Response missing required arrays");
+            return err(externalApiError("Gemini API", "Response missing required arrays"));
         }
 
         // Filter out empty strings and normalize
@@ -291,17 +299,17 @@ Creator Context: ${explanation}`;
         // Validate we have reasonable number of answers
         if (correct.length === 0) {
             this.logWarning("AnswerSetGenerator", "AI returned zero correct answers");
-            throw new Error("No correct answers generated");
+            return err(externalApiError("Gemini API", "No correct answers generated"));
         }
 
         if (correct.length > 50 || close.length > 50) {
             this.logWarning("AnswerSetGenerator", "AI returned too many answers, truncating");
         }
 
-        return {
+        return ok({
             correct: correct.slice(0, 50), // Cap at 50
             close: close.slice(0, 50),
-        };
+        });
     }
 
     /**
@@ -377,8 +385,7 @@ Creator Context: ${explanation}`;
      */
     async isConfigured(): Promise<boolean> {
         try {
-            const settings = await this.context.settings.getAll();
-            const apiKey = settings["GEMINI_API_KEY"] as string;
+            const apiKey = await settings.get("GEMINI_API_KEY") as string;
             return !!apiKey;
         } catch (error) {
             this.logError("AnswerSetGenerator.isConfigured", error);

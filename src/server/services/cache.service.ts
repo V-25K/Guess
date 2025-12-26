@@ -7,7 +7,11 @@
  * Requirements: 1.2, 4.1, 4.4, 8.1, 8.2, 8.3, 8.4
  */
 
-import type { Context, RedisClient, JSONValue } from '@devvit/public-api';
+import type { Context } from '@devvit/server/server-context';
+import { redis } from '@devvit/web/server';
+
+// JSONValue type for cache data
+export type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue };
 import { CacheKeyBuilder } from '../../shared/utils/cache.js';
 import { BaseService } from './base.service.js';
 
@@ -75,18 +79,15 @@ export function isValidDynamicTTL(ttl: number): boolean {
  * - Error handling with fallback values
  */
 export class CacheService extends BaseService {
-  private redis: RedisClient;
-
   constructor(context: Context) {
     super(context);
-    this.redis = context.redis;
   }
 
   /**
-   * Get shared data using Devvit's context.cache()
+   * Get shared data using Redis
    * 
    * This method is for non-personalized data that can be shared across all users.
-   * Uses Devvit's built-in caching mechanism (Redis + local in-memory write-through cache).
+   * Uses Redis for caching with specified TTL.
    * 
    * @param key - Cache key (should follow namespace format)
    * @param fetcher - Function to fetch data if not cached
@@ -104,23 +105,26 @@ export class CacheService extends BaseService {
       // Validate TTL for dynamic data
       validateDynamicTTL(ttl);
 
-      const result = await this.context.cache<T>(
-        async () => {
-          try {
-            return await fetcher();
-          } catch (fetchError) {
-            this.logError('CacheService.getSharedData', fetchError);
-            // Re-throw to let context.cache handle it
-            throw fetchError;
-          }
-        },
-        {
-          key,
-          ttl,
-        }
-      );
+      // Try to get from Redis cache first
+      const cached = await redis.get(key);
+      if (cached) {
+        return JSON.parse(cached) as T;
+      }
 
-      return result;
+      // Cache miss - fetch data
+      try {
+        const result = await fetcher();
+        
+        // Store in Redis cache
+        await redis.set(key, JSON.stringify(result), {
+          expiration: new Date(Date.now() + ttl),
+        });
+        
+        return result;
+      } catch (fetchError) {
+        this.logError('CacheService.getSharedData', fetchError);
+        throw fetchError;
+      }
     } catch (error) {
       // Log error and return null as fallback (Requirement 8.3)
       this.logError('CacheService.getSharedData', error);
@@ -149,22 +153,26 @@ export class CacheService extends BaseService {
     try {
       validateDynamicTTL(ttl);
 
-      const result = await this.context.cache<T[]>(
-        async () => {
-          try {
-            return await fetcher();
-          } catch (fetchError) {
-            this.logError('CacheService.getSharedDataArray', fetchError);
-            throw fetchError;
-          }
-        },
-        {
-          key,
-          ttl,
-        }
-      );
+      // Try to get from Redis cache first
+      const cached = await redis.get(key);
+      if (cached) {
+        return JSON.parse(cached) as T[];
+      }
 
-      return result ?? [];
+      // Cache miss - fetch data
+      try {
+        const result = await fetcher();
+        
+        // Store in Redis cache
+        await redis.set(key, JSON.stringify(result), {
+          expiration: new Date(Date.now() + ttl),
+        });
+        
+        return result ?? [];
+      } catch (fetchError) {
+        this.logError('CacheService.getSharedDataArray', fetchError);
+        throw fetchError;
+      }
     } catch (error) {
       // Return empty array as fallback (Requirement 8.3)
       this.logError('CacheService.getSharedDataArray', error);
@@ -184,7 +192,7 @@ export class CacheService extends BaseService {
   async getUserData<T>(userId: string, key: string): Promise<T | null> {
     try {
       const cacheKey = CacheKeyBuilder.createKey('user', userId, key);
-      const value = await this.redis.get(cacheKey);
+      const value = await redis.get(cacheKey);
       
       if (!value) {
         return null;
@@ -217,7 +225,7 @@ export class CacheService extends BaseService {
       const cacheKey = CacheKeyBuilder.createKey('user', userId, key);
       const serialized = JSON.stringify(data);
       
-      await this.redis.set(cacheKey, serialized, {
+      await redis.set(cacheKey, serialized, {
         expiration: new Date(Date.now() + ttl),
       });
     } catch (error) {
@@ -237,7 +245,7 @@ export class CacheService extends BaseService {
   async invalidateUserData(userId: string, key: string): Promise<void> {
     try {
       const cacheKey = CacheKeyBuilder.createKey('user', userId, key);
-      await this.redis.del(cacheKey);
+      await redis.del(cacheKey);
     } catch (error) {
       // Log but don't throw - invalidation failures should not crash (Requirement 6.3)
       this.logError('CacheService.invalidateUserData', error);
@@ -269,7 +277,7 @@ export class CacheService extends BaseService {
   async getAvatarUrl(username: string): Promise<string | null> {
     try {
       const cacheKey = CacheKeyBuilder.createKey('avatar', username);
-      const value = await this.redis.get(cacheKey);
+      const value = await redis.get(cacheKey);
       return value || null;
     } catch (error) {
       this.logError('CacheService.getAvatarUrl', error);
@@ -288,7 +296,7 @@ export class CacheService extends BaseService {
   async setAvatarUrl(username: string, avatarUrl: string): Promise<void> {
     try {
       const cacheKey = CacheKeyBuilder.createKey('avatar', username);
-      await this.redis.set(cacheKey, avatarUrl, {
+      await redis.set(cacheKey, avatarUrl, {
         expiration: new Date(Date.now() + TTL.AVATAR),
       });
     } catch (error) {
@@ -337,3 +345,4 @@ export class CacheService extends BaseService {
     }
   }
 }
+

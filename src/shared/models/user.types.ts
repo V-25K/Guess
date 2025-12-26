@@ -21,6 +21,7 @@ export type UserProfile = {
   role: UserRole;
   created_at?: string;
   updated_at?: string;
+  avatar_url?: string;
 };
 
 export type UserProfileUpdate = Partial<Omit<UserProfile, 'id' | 'user_id' | 'created_at'>>;

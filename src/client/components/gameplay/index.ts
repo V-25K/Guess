@@ -1,16 +1,25 @@
 /**
- * Gameplay Components
- * Export all gameplay-related UI components
+ * Gameplay Components Barrel Export
  */
 
-export { PlayGameView } from './PlayGameView.js';
-export type { PlayGameViewProps } from './PlayGameView.js';
+export { GameplayView } from './GameplayView';
+export type { GameplayViewProps, FeedbackState } from './GameplayView';
+export { getFeedbackState } from './GameplayView';
 
-export { ImageGrid } from './ImageGrid.js';
-export type { ImageGridProps } from './ImageGrid.js';
+export { ExplanationView } from './ExplanationView';
+export type { ExplanationViewProps } from './ExplanationView';
 
-export { GameplayViewWrapper } from './GameplayViewWrapper.js';
-export type { GameplayViewWrapperProps } from './GameplayViewWrapper.js';
+export { GameHeader } from './GameHeader';
+export type { GameHeaderProps } from './GameHeader';
 
-export { AnswerExplanationView } from './AnswerExplanationView.js';
-export type { AnswerExplanationViewProps } from './AnswerExplanationView.js';
+export { FeedbackBubble } from './FeedbackBubble';
+export type { FeedbackBubbleProps } from './FeedbackBubble';
+
+export { HintConfirmDialog } from './HintConfirmDialog';
+export type { HintConfirmDialogProps } from './HintConfirmDialog';
+
+export { HintDescriptionOverlay } from './HintDescriptionOverlay';
+export type { HintDescriptionOverlayProps } from './HintDescriptionOverlay';
+
+export { ChallengeImageGrid } from './ChallengeImageGrid';
+export type { ChallengeImageGridProps } from './ChallengeImageGrid';

@@ -3,7 +3,7 @@
  * Efficiently loads related data in parallel to reduce waterfall requests
  */
 
-import type { Context } from '@devvit/public-api';
+import type { Context } from '@devvit/server/server-context';
 import { BaseService } from './base.service.js';
 import { UserService } from './user.service.js';
 import { ChallengeService } from './challenge.service.js';
@@ -12,6 +12,7 @@ import { fetchRelatedData, fetchParallelSuccess } from '../../shared/utils/paral
 import type { UserProfile } from '../../shared/models/user.types.js';
 import type { Challenge } from '../../shared/models/challenge.types.js';
 import type { ChallengeAttempt } from '../../shared/models/attempt.types.js';
+import { unwrapOr } from '../../shared/utils/result.js';
 
 export type UserDashboardData = {
   profile: UserProfile | null;
@@ -42,14 +43,20 @@ export class DataLoaderService extends BaseService {
    */
   async loadUserDashboard(userId: string, username?: string): Promise<UserDashboardData> {
     try {
-      const data = await fetchRelatedData({
+      const results = await fetchRelatedData({
         profile: () => this.userService.getUserProfile(userId, username),
         recentChallenges: () => this.challengeService.getChallenges({ limit: 10 }),
         userAttempts: () => this.attemptService.getUserAttempts(userId),
         userRank: () => this.userService.getUserRank(userId),
       });
 
-      return data;
+      // Unwrap Result types to get actual values
+      return {
+        profile: unwrapOr(results.profile, null),
+        recentChallenges: unwrapOr(results.recentChallenges, []),
+        userAttempts: unwrapOr(results.userAttempts, []),
+        userRank: unwrapOr(results.userRank, null),
+      };
     } catch (error) {
       this.logError('DataLoaderService.loadUserDashboard', error);
       return {
@@ -69,7 +76,8 @@ export class DataLoaderService extends BaseService {
     userId: string
   ): Promise<ChallengeDetailData> {
     try {
-      const challenge = await this.challengeService.getChallengeById(challengeId);
+      const challengeResult = await this.challengeService.getChallengeById(challengeId);
+      const challenge = unwrapOr(challengeResult, null);
       
       if (!challenge) {
         return {
@@ -80,14 +88,15 @@ export class DataLoaderService extends BaseService {
       }
 
       const attemptRepo = this.attemptService['attemptRepo'];
-      const data = await fetchRelatedData({
+      const results = await fetchRelatedData({
         userAttempt: () => attemptRepo.findByUserAndChallenge(userId, challengeId),
         creatorProfile: () => this.userService.getUserProfile(challenge.creator_id),
       });
 
       return {
         challenge,
-        ...data,
+        userAttempt: unwrapOr(results.userAttempt, null),
+        creatorProfile: unwrapOr(results.creatorProfile, null),
       };
     } catch (error) {
       this.logError('DataLoaderService.loadChallengeDetail', error);
@@ -110,7 +119,8 @@ export class DataLoaderService extends BaseService {
     );
 
     const profileMap = new Map<string, UserProfile>();
-    results.forEach(profile => {
+    results.forEach(result => {
+      const profile = unwrapOr(result, null);
       if (profile) {
         profileMap.set(profile.user_id, profile);
       }
@@ -129,7 +139,8 @@ export class DataLoaderService extends BaseService {
     );
 
     const challengeMap = new Map<string, Challenge>();
-    results.forEach(challenge => {
+    results.forEach(result => {
+      const challenge = unwrapOr(result, null);
       if (challenge) {
         challengeMap.set(challenge.id, challenge);
       }

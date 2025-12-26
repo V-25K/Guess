@@ -8,14 +8,18 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
-    "incremental": false
+    "incremental": false,
+    "moduleResolution": "node",
+    "module": "commonjs"
   },
   "include": [
-    "src/**/*"
+    "src/server/**/*",
+    "src/shared/**/*"
   ],
   "exclude": [
     "functions/**/*",
     "node_modules",
-    "dist"
+    "dist",
+    "src/client"
   ]
 }

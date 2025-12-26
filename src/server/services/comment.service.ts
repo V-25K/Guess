@@ -3,12 +3,14 @@
  * Handles all business logic related to comment tracking and creator rewards
  */
 
-import type { Context } from '@devvit/public-api';
+import type { Context } from '@devvit/server/server-context';
 import { BaseService } from './base.service.js';
 import { CommentRepository } from '../repositories/comment.repository.js';
 import { UserService } from './user.service.js';
 import { getCommentReward } from '../../shared/utils/reward-calculator.js';
 import type { CommentReward } from '../../shared/models/comment.types.js';
+import { ok, err, isOk, type Result } from '../../shared/utils/result.js';
+import { internalError, type AppError } from '../../shared/models/errors.js';
 
 export class CommentService extends BaseService {
   constructor(
@@ -29,72 +31,81 @@ export class CommentService extends BaseService {
     commentId: string,
     commenterId: string,
     creatorId: string
-  ): Promise<boolean> {
-    return this.withBooleanErrorHandling(
-      async () => {
-        const reward = getCommentReward();
+  ): Promise<Result<boolean, AppError>> {
+    try {
+      const reward = getCommentReward();
 
-        const success = await this.withRetry(
-          () => this.commentRepo.trackCommentAtomic(
+      const result = await this.withRetry(
+        async () => {
+          const success = await this.commentRepo.trackCommentAtomic(
             challengeId,
             creatorId,
             commenterId,
             commentId,
             reward.points,
             reward.exp
-          ),
-          {
-            maxRetries: 3,
-            exponentialBackoff: true,
-            onRetry: (attemptNum, error) => {
-              this.logWarning(
-                'CommentService.trackComment',
-                `Atomic comment tracking retry ${attemptNum}: ${error.message}`
-              );
-            },
-          }
-        );
-
-        if (success) {
-          this.userService.invalidateUserCache(creatorId);
-
-          this.logInfo(
-            'CommentService',
-            `Awarded ${reward.points} points and ${reward.exp} exp to creator ${creatorId} for comment ${commentId}`
           );
-        } else {
-          this.logInfo(
-            'CommentService',
-            `Comment ${commentId} was not rewarded (duplicate or self-comment)`
-          );
+          return ok(success);
+        },
+        {
+          maxRetries: 3,
+          exponentialBackoff: true,
+          onRetry: (attemptNum, error) => {
+            this.logWarning(
+              'CommentService.trackComment',
+              `Atomic comment tracking retry ${attemptNum}`
+            );
+          },
         }
+      );
 
-        return success;
-      },
-      'Failed to track comment'
-    );
+      if (!isOk(result)) {
+        return result;
+      }
+
+      const success = result.value;
+
+      if (success) {
+        this.userService.invalidateUserCache(creatorId);
+
+        this.logInfo(
+          'CommentService',
+          `Awarded ${reward.points} points and ${reward.exp} exp to creator ${creatorId} for comment ${commentId}`
+        );
+      } else {
+        this.logInfo(
+          'CommentService',
+          `Comment ${commentId} was not rewarded (duplicate or self-comment)`
+        );
+      }
+
+      return ok(success);
+    } catch (error) {
+      this.logError('CommentService.trackComment', error);
+      return err(internalError('Failed to track comment', error));
+    }
   }
 
   /**
    * Award comment reward to challenge creator
    * Awards 1pt/1exp per comment
    */
-  async awardCommentReward(creatorId: string, points: number, experience: number): Promise<boolean> {
-    return this.withBooleanErrorHandling(
-      async () => {
-        const success = await this.userService.awardPoints(creatorId, points, experience);
+  async awardCommentReward(creatorId: string, points: number, experience: number): Promise<Result<boolean, AppError>> {
+    try {
+      const result = await this.userService.awardPoints(creatorId, points, experience);
 
-        if (success) {
-          this.logInfo(
-            'CommentService',
-            `Awarded ${points} points and ${experience} exp to creator ${creatorId}`
-          );
-        }
+      if (isOk(result) && result.value) {
+        this.logInfo(
+          'CommentService',
+          `Awarded ${points} points and ${experience} exp to creator ${creatorId}`
+        );
+      }
 
-        return success;
-      },
-      'Failed to award comment reward'
-    );
+      return result;
+    } catch (error) {
+      this.logError('CommentService.awardCommentReward', error);
+      return err(internalError('Failed to award comment reward', error));
+    }
   }
 
   /**
@@ -112,14 +123,14 @@ export class CommentService extends BaseService {
   /**
    * Get all comment rewards for a specific challenge
    */
-  async getChallengeComments(challengeId: string): Promise<CommentReward[]> {
-    const result = await this.withErrorHandling(
-      async () => {
-        return this.commentRepo.findByChallenge(challengeId);
-      },
-      'Failed to get challenge comments'
-    );
-    return result || [];
+  async getChallengeComments(challengeId: string): Promise<Result<CommentReward[], AppError>> {
+    try {
+      const comments = await this.commentRepo.findByChallenge(challengeId);
+      return ok(comments);
+    } catch (error) {
+      this.logError('CommentService.getChallengeComments', error);
+      return err(internalError('Failed to get challenge comments', error));
+    }
   }
 
   /**

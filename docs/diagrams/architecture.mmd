@@ -1,0 +1,64 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#FF4500', 'primaryTextColor': '#fff', 'primaryBorderColor': '#CC3700', 'lineColor': '#666', 'secondaryColor': '#006100', 'tertiaryColor': '#fff'}}}%%
+
+graph TB
+    subgraph Client["React Client (Devvit Web)"]
+        App[App.tsx]
+        
+        subgraph Views["Views"]
+            MainMenu[MainMenuView]
+            Gameplay[GameplayView]
+            Profile[ProfileView]
+            Leaderboard[LeaderboardView]
+            Create[CreateChallengeView]
+        end
+        
+        subgraph SharedComponents["Shared Components"]
+            Button[Button]
+            Input[Input]
+            Card[Card]
+            Modal[Modal]
+            Toast[Toast]
+            Badge[Badge]
+            ErrorBoundary[ErrorBoundary]
+        end
+        
+        subgraph Hooks["Custom Hooks"]
+            useGameReducer[useGameReducer]
+            useToast[useToast]
+        end
+        
+        subgraph API["API Layer"]
+            ApiClient[ApiClient]
+            ApiError[ApiError]
+            ApiTypes[API Types]
+        end
+        
+        subgraph Styles["Design System"]
+            Tokens[Design Tokens]
+            ComponentCSS[Component Styles]
+            FeatureCSS[Feature Styles]
+        end
+    end
+    
+    subgraph Server["Devvit Server"]
+        Routes[API Routes]
+        Services[Services]
+        Repositories[Repositories]
+    end
+    
+    subgraph Storage["Reddit Storage"]
+        Redis[(Redis KV Store)]
+    end
+    
+    App --> Views
+    Views --> SharedComponents
+    Views --> Hooks
+    App --> useGameReducer
+    useGameReducer --> ApiClient
+    ApiClient --> Routes
+    Routes --> Services
+    Services --> Repositories
+    Repositories --> Redis
+    
+    SharedComponents --> Styles
+    Views --> Styles

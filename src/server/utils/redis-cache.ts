@@ -3,14 +3,14 @@
  * Provides distributed caching using Devvit's Redis client
  */
 
-import type { RedisClient } from '@devvit/public-api';
+import { redis } from '@devvit/web/server';
 
 export type CacheOptions = {
     ttl: number; // Time to live in milliseconds
 };
 
 export class RedisCache {
-    constructor(private redis: RedisClient) { }
+    constructor() { }
 
     /**
      * Set a value in the cache with optional TTL
@@ -19,9 +19,9 @@ export class RedisCache {
         try {
             const serialized = JSON.stringify(value);
             if (ttl) {
-                await this.redis.set(key, serialized, { expiration: new Date(Date.now() + ttl) });
+                await redis.set(key, serialized, { expiration: new Date(Date.now() + ttl) });
             } else {
-                await this.redis.set(key, serialized);
+                await redis.set(key, serialized);
             }
         } catch (error) {
             console.error(`[RedisCache] Error setting key ${key}:`, error);
@@ -34,7 +34,7 @@ export class RedisCache {
      */
     async get<T>(key: string): Promise<T | null> {
         try {
-            const value = await this.redis.get(key);
+            const value = await redis.get(key);
             if (!value) {
                 return null;
             }
@@ -50,7 +50,7 @@ export class RedisCache {
      */
     async delete(key: string): Promise<void> {
         try {
-            await this.redis.del(key);
+            await redis.del(key);
         } catch (error) {
             console.error(`[RedisCache] Error deleting key ${key}:`, error);
         }

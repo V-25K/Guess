@@ -1,113 +1,140 @@
 /**
  * Application Error Types
  * Standardized error types for consistent error handling across the application.
+ * Based on Result<T, E> pattern design.
  */
 
 /**
- * Error codes for application-specific errors
+ * Validation error - indicates invalid input data
  */
-export type AppErrorCode =
-    | 'AUTH_REQUIRED'
-    | 'RATE_LIMITED'
-    | 'CHALLENGE_NOT_FOUND'
-    | 'ATTEMPT_NOT_FOUND'
-    | 'VALIDATION_FAILED'
-    | 'NETWORK_ERROR'
-    | 'AI_UNAVAILABLE'
-    | 'CACHE_ERROR'
-    | 'DATABASE_ERROR'
-    | 'UNKNOWN_ERROR';
-
-/**
- * Standardized application error interface
- */
-export interface AppError {
-    /** Unique error code for identification */
-    code: AppErrorCode;
-    /** Human-readable error message */
-    message: string;
-    /** Additional error details */
-    details?: Record<string, unknown>;
-    /** Whether the user can retry the operation */
-    recoverable: boolean;
-    /** Original error if this wraps another error */
-    cause?: Error;
+export interface ValidationError {
+    type: 'validation';
+    fields: Array<{ field: string; message: string }>;
 }
 
 /**
- * Create a standardized application error
+ * Not found error - indicates a resource could not be found
  */
-export function createAppError(
-    code: AppErrorCode,
-    message: string,
-    options?: {
-        details?: Record<string, unknown>;
-        recoverable?: boolean;
-        cause?: Error;
-    }
-): AppError {
+export interface NotFoundError {
+    type: 'not_found';
+    resource: string;
+    identifier: string;
+}
+
+/**
+ * Rate limit error - indicates too many requests
+ */
+export interface RateLimitError {
+    type: 'rate_limit';
+    timeRemainingMs: number;
+}
+
+/**
+ * Database error - indicates a database operation failure
+ */
+export interface DatabaseError {
+    type: 'database';
+    operation: string;
+    message: string;
+}
+
+/**
+ * External API error - indicates an external service failure
+ */
+export interface ExternalApiError {
+    type: 'external_api';
+    service: string;
+    statusCode?: number;
+    message: string;
+}
+
+/**
+ * Internal error - indicates an unexpected internal failure
+ */
+export interface InternalError {
+    type: 'internal';
+    message: string;
+    cause?: unknown;
+}
+
+/**
+ * Discriminated union of all application error types
+ */
+export type AppError =
+    | ValidationError
+    | NotFoundError
+    | RateLimitError
+    | DatabaseError
+    | ExternalApiError
+    | InternalError;
+
+/**
+ * Create a validation error
+ */
+export function validationError(
+    fields: Array<{ field: string; message: string }>
+): ValidationError {
     return {
-        code,
-        message,
-        details: options?.details,
-        recoverable: options?.recoverable ?? true,
-        cause: options?.cause,
+        type: 'validation',
+        fields,
     };
 }
 
 /**
- * Check if an error is an AppError
+ * Create a not found error
  */
-export function isAppError(error: unknown): error is AppError {
-    return (
-        typeof error === 'object' &&
-        error !== null &&
-        'code' in error &&
-        'message' in error &&
-        'recoverable' in error
-    );
+export function notFoundError(resource: string, identifier: string): NotFoundError {
+    return {
+        type: 'not_found',
+        resource,
+        identifier,
+    };
 }
 
 /**
- * Convert unknown errors to AppError
+ * Create a rate limit error
  */
-export function toAppError(error: unknown, fallbackCode: AppErrorCode = 'UNKNOWN_ERROR'): AppError {
-    if (isAppError(error)) {
-        return error;
-    }
-
-    if (error instanceof Error) {
-        return createAppError(fallbackCode, error.message, {
-            cause: error,
-            recoverable: true,
-        });
-    }
-
-    return createAppError(fallbackCode, String(error), {
-        recoverable: true,
-    });
+export function rateLimitError(timeRemainingMs: number): RateLimitError {
+    return {
+        type: 'rate_limit',
+        timeRemainingMs,
+    };
 }
 
 /**
- * Error messages for user display
+ * Create a database error
  */
-export const ERROR_MESSAGES: Record<AppErrorCode, string> = {
-    AUTH_REQUIRED: 'Please log in to continue.',
-    RATE_LIMITED: 'You\'ve reached the limit. Please try again later.',
-    CHALLENGE_NOT_FOUND: 'This challenge could not be found.',
-    ATTEMPT_NOT_FOUND: 'Challenge attempt not found.',
-    VALIDATION_FAILED: 'Invalid input. Please check your data.',
-    NETWORK_ERROR: 'Connection error. Please check your internet.',
-    AI_UNAVAILABLE: 'AI service temporarily unavailable.',
-    CACHE_ERROR: 'Cache error. Please try again.',
-    DATABASE_ERROR: 'Database error. Please try again.',
-    UNKNOWN_ERROR: 'Something went wrong. Please try again.',
-};
+export function databaseError(operation: string, message: string): DatabaseError {
+    return {
+        type: 'database',
+        operation,
+        message,
+    };
+}
 
 /**
- * Get user-friendly error message
+ * Create an external API error
  */
-export function getErrorMessage(error: AppError | AppErrorCode): string {
-    const code = typeof error === 'string' ? error : error.code;
-    return ERROR_MESSAGES[code] || ERROR_MESSAGES.UNKNOWN_ERROR;
+export function externalApiError(
+    service: string,
+    message: string,
+    statusCode?: number
+): ExternalApiError {
+    return {
+        type: 'external_api',
+        service,
+        message,
+        statusCode,
+    };
+}
+
+/**
+ * Create an internal error
+ */
+export function internalError(message: string, cause?: unknown): InternalError {
+    return {
+        type: 'internal',
+        message,
+        cause,
+    };
 }

@@ -3,61 +3,32 @@
  * Provides common error handling and utilities for all services
  */
 
-import type { Context } from '@devvit/public-api';
+import type { Context } from '@devvit/server/server-context';
+import type { Result } from '../../shared/utils/result.js';
+import type { AppError } from '../../shared/models/errors.js';
+import { isOk } from '../../shared/utils/result.js';
 
 export abstract class BaseService {
   constructor(protected context: Context) { }
 
   /**
-   * Execute an operation with error handling
-   * Returns null on error instead of throwing
-   */
-  protected async withErrorHandling<T>(
-    operation: () => Promise<T>,
-    errorMessage: string
-  ): Promise<T | null> {
-    try {
-      return await operation();
-    } catch (error) {
-      console.error(errorMessage, error);
-      return null;
-    }
-  }
-
-  /**
-   * Execute an operation with error handling that returns a boolean
-   * Returns false on error
-   */
-  protected async withBooleanErrorHandling(
-    operation: () => Promise<boolean>,
-    errorMessage: string
-  ): Promise<boolean> {
-    try {
-      return await operation();
-    } catch (error) {
-      console.error(errorMessage, error);
-      return false;
-    }
-  }
-
-  /**
    * Execute an operation with retry logic and exponential backoff
+   * Updated to work with Result types
    * 
-   * @param operation - The async operation to retry
+   * @param operation - The async operation to retry (returns Result)
    * @param options - Retry configuration options
-   * @returns The result of the operation
-   * @throws The last error if all retries fail
+   * @returns The Result of the operation
    */
   protected async withRetry<T>(
-    operation: () => Promise<T>,
+    operation: () => Promise<Result<T, AppError>>,
     options: {
       maxRetries?: number;
       initialDelayMs?: number;
       maxDelayMs?: number;
       exponentialBackoff?: boolean;
-      onRetry?: (attempt: number, error: any) => void;
+      onRetry?: (attempt: number, error: AppError) => void;
     } = {}
-  ): Promise<T> {
+  ): Promise<Result<T, AppError>> {
     const {
       maxRetries = 3,
       initialDelayMs = 1000,
@@ -66,13 +37,19 @@ export abstract class BaseService {
       onRetry,
     } = options;
 
-    let lastError: any;
+    let lastResult: Result<T, AppError> | undefined;
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
-        return await operation();
-      } catch (error) {
-        lastError = error;
+        const result = await operation();
+        
+        // If successful, return immediately
+        if (isOk(result)) {
+          return result;
+        }
+        
+        // Store the error result
+        lastResult = result;
 
         // Don't retry on the last attempt
         if (attempt < maxRetries - 1) {
@@ -95,16 +72,31 @@ export abstract class BaseService {
 
           // Call onRetry callback if provided
           if (onRetry) {
-            onRetry(attempt + 1, error);
+            onRetry(attempt + 1, result.error);
           }
 
           await this.delay(delay);
         }
+      } catch (error) {
+        // Unexpected error - this shouldn't happen with Result pattern
+        // but we handle it for safety
+        this.logError('RetryLogic', error);
+        
+        // If this is the last attempt, we need to return something
+        // This is an edge case that shouldn't normally occur
+        if (attempt === maxRetries - 1) {
+          throw error;
+        }
+        
+        await this.delay(initialDelayMs);
       }
     }
 
     this.logError('RetryLogic', `All ${maxRetries} attempts failed`);
-    throw lastError;
+    
+    // Return the last error result
+    // TypeScript knows lastResult must be defined here because we always set it in the loop
+    return lastResult!;
   }
 
   /**
@@ -160,16 +152,80 @@ export abstract class BaseService {
 
   /**
    * Log an error with context and metadata
+   * Updated to handle both AppError (from Result pattern) and legacy errors
    */
   protected logError(context: string, error: unknown, metadata?: Record<string, any>): void {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    const errorStack = error instanceof Error ? error.stack : undefined;
+    let errorMessage: string;
+    let errorDetails: Record<string, any> = {};
+
+    // Check if this is an AppError from Result pattern
+    if (this.isAppError(error)) {
+      errorMessage = this.formatAppError(error);
+      errorDetails = { errorType: error.type, ...this.getAppErrorDetails(error) };
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+      errorDetails = { stack: error.stack };
+    } else {
+      errorMessage = String(error);
+      errorDetails = { rawError: error };
+    }
 
     this.log('error', context, errorMessage, {
       ...metadata,
-      stack: errorStack,
-      rawError: error instanceof Error ? undefined : error,
+      ...errorDetails,
     });
+  }
+
+  /**
+   * Type guard to check if an error is an AppError
+   */
+  private isAppError(error: unknown): error is AppError {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'type' in error &&
+      typeof (error as any).type === 'string'
+    );
+  }
+
+  /**
+   * Format an AppError into a readable message
+   */
+  private formatAppError(error: AppError): string {
+    switch (error.type) {
+      case 'validation':
+        return `Validation error: ${error.fields.map(f => `${f.field}: ${f.message}`).join(', ')}`;
+      case 'not_found':
+        return `${error.resource} not found: ${error.identifier}`;
+      case 'rate_limit':
+        return `Rate limit exceeded. Retry after ${error.timeRemainingMs}ms`;
+      case 'database':
+        return `Database error in ${error.operation}: ${error.message}`;
+      case 'external_api':
+        return `External API error (${error.service}): ${error.message}`;
+      case 'internal':
+        return `Internal error: ${error.message}`;
+    }
+  }
+
+  /**
+   * Extract additional details from an AppError for logging
+   */
+  private getAppErrorDetails(error: AppError): Record<string, any> {
+    switch (error.type) {
+      case 'validation':
+        return { fields: error.fields };
+      case 'not_found':
+        return { resource: error.resource, identifier: error.identifier };
+      case 'rate_limit':
+        return { timeRemainingMs: error.timeRemainingMs };
+      case 'database':
+        return { operation: error.operation, message: error.message };
+      case 'external_api':
+        return { service: error.service, statusCode: error.statusCode, message: error.message };
+      case 'internal':
+        return { message: error.message, cause: error.cause };
+    }
   }
 
   /**

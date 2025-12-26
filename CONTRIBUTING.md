@@ -3,7 +3,7 @@
 ## Development Setup
 1. Clone the repository
 2. Run `npm install`
-3. Copy `.env.example` to `.env` and configure settings
+3. Create a `.env` file with required settings (see `devvit.json` for required keys)
 4. Run `npm run dev` for local testing
 
 ## Code Standards

@@ -31,15 +31,16 @@ function createBonus(type: BonusType): Bonus {
 
 /**
  * Calculate penalty for using a hint based on total images and hint number (1-based index of usage)
+ * - 3 image challenges: 4 points per hint
+ * - 2 image challenges: 6 points per hint
  */
 export function calculateHintPenalty(totalImages: number, hintNumber: number): number {
   if (totalImages === 3) {
-    if (hintNumber === 1) return 7;
-    if (hintNumber === 2) return 6;
-    if (hintNumber === 3) return 5;
+    // 4 points per hint for 3-image challenges
+    if (hintNumber >= 1 && hintNumber <= 3) return 4;
   } else if (totalImages === 2) {
-    if (hintNumber === 1) return 10;
-    if (hintNumber === 2) return 8;
+    // 6 points per hint for 2-image challenges
+    if (hintNumber >= 1 && hintNumber <= 2) return 6;
   }
   return 0;
 }
@@ -158,7 +159,8 @@ export function getCreatorBonus(): Bonus {
 
 /**
  * Calculate the reward for completing a challenge based on attempt count.
- * Formula: Score = 28 - ((attempts - 1) × 2)
+ * Formula: Score = 30 - ((attempts - 1) × 2)
+ * Minimum score (no hints): 12 points at 10 attempts
  * No built-in bonus - bonuses are calculated separately via calculateBonuses()
  */
 export function calculateAttemptReward(
@@ -175,8 +177,9 @@ export function calculateAttemptReward(
     return REWARDS.SOLVE_FAILED;
   }
 
-  // Base calculation: 28 - ((attempts - 1) × 2)
-  let points = 28 - ((attemptsMade - 1) * 2);
+  // Base calculation: 30 - ((attempts - 1) × 2)
+  // At attempt 1: 30 points, at attempt 10: 12 points
+  let points = 30 - ((attemptsMade - 1) * 2);
 
   // Deduct hints penalty
   const hintPenalty = calculateTotalHintPenalty(totalImages, hintsUsedCount);

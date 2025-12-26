@@ -3,9 +3,10 @@
  * Handles all database operations for comment rewards
  */
 
-import type { Context } from '@devvit/public-api';
+import type { Context } from '@devvit/server/server-context';
 import { BaseRepository } from './base.repository.js';
 import type { CommentReward, CommentRewardCreate } from '../../shared/models/comment.types.js';
+import { unwrapOr } from '../../shared/utils/result.js';
 
 export class CommentRepository extends BaseRepository {
   private readonly TABLE = 'comment_rewards';
@@ -18,24 +19,27 @@ export class CommentRepository extends BaseRepository {
    * Create a new comment reward record
    */
   async create(commentReward: CommentRewardCreate): Promise<CommentReward | null> {
-    return this.insert<CommentReward>(this.TABLE, commentReward);
+    const result = await this.insert<CommentReward>(this.TABLE, commentReward);
+    return unwrapOr(result, null);
   }
 
   /**
    * Find all comment rewards for a specific challenge
    */
   async findByChallenge(challengeId: string): Promise<CommentReward[]> {
-    return this.query<CommentReward>(this.TABLE, {
+    const result = await this.query<CommentReward>(this.TABLE, {
       filter: { challenge_id: `eq.${challengeId}` },
       order: 'created_at.desc',
     });
+    return unwrapOr(result, []);
   }
 
   /**
    * Get the count of comments (rewards) for a challenge
    */
   async getCommentCount(challengeId: string): Promise<number> {
-    return this.count(this.TABLE, { challenge_id: challengeId });
+    const result = await this.count(this.TABLE, { challenge_id: challengeId });
+    return unwrapOr(result, 0);
   }
 
   /**
@@ -78,7 +82,7 @@ export class CommentRepository extends BaseRepository {
     points: number,
     experience: number
   ): Promise<boolean> {
-    return this.executeBooleanFunction('track_comment_reward', {
+    const result = await this.executeBooleanFunction('track_comment_reward', {
       p_challenge_id: challengeId,
       p_creator_id: creatorId,
       p_commenter_id: commenterId,
@@ -86,6 +90,7 @@ export class CommentRepository extends BaseRepository {
       p_points: points,
       p_experience: experience,
     });
+    return unwrapOr(result, false);
   }
 
   /**
@@ -103,15 +108,16 @@ export class CommentRepository extends BaseRepository {
       p_creator_id: creatorId,
     });
 
-    if (!result || result.length === 0) {
+    const stats = unwrapOr(result, null);
+    if (!stats || stats.length === 0) {
       return null;
     }
 
     // Convert bigint strings to numbers
     return {
-      totalComments: parseInt(result[0].total_comments, 10),
-      totalPoints: parseInt(result[0].total_points, 10),
-      totalExp: parseInt(result[0].total_exp, 10),
+      totalComments: parseInt(stats[0].total_comments, 10),
+      totalPoints: parseInt(stats[0].total_points, 10),
+      totalExp: parseInt(stats[0].total_exp, 10),
     };
   }
 }

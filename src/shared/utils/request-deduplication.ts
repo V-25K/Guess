@@ -141,8 +141,8 @@ export class RequestDeduplicator {
   }
 }
 
-// Default singleton instance for convenience
-const defaultDeduplicator = new RequestDeduplicator();
+// Default singleton instance for convenience (exported for testing)
+export const defaultDeduplicator = new RequestDeduplicator();
 
 /**
  * Execute a request with deduplication (legacy function API)

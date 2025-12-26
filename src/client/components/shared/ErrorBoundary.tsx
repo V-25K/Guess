@@ -1,23 +1,28 @@
 /**
  * ErrorBoundary Component
  * Catches and displays component errors with recovery options
+ * Uses Tailwind CSS for styling
+ * Requirements: 1.2
  */
 
-import { Devvit } from '@devvit/public-api';
-import { BG_PRIMARY } from '../../constants/colors.js';
+import React, { Component, ReactNode } from 'react';
 
 export interface ErrorBoundaryProps {
-  children: JSX.Element | JSX.Element[];
-  fallback?: JSX.Element;
-  onError?: (error: Error) => void;
+  children: ReactNode;
+  fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
   onReset?: () => void;
+  showDetails?: boolean;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+  errorInfo: React.ErrorInfo | null;
 }
 
 /**
  * ErrorBoundary component for catching and displaying component errors
- * 
- * Note: Devvit doesn't have traditional React error boundaries.
- * This is a pattern-based implementation using try-catch and state management.
  * 
  * @example
  * ```tsx
@@ -29,100 +34,125 @@ export interface ErrorBoundaryProps {
  * </ErrorBoundary>
  * ```
  */
-export const ErrorBoundary: Devvit.BlockComponent<ErrorBoundaryProps> = (
-  { children, fallback, onReset },
-  context
-) => {
-  const { useState } = context;
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
 
-  const [hasError, setHasError] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string>('');
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
+    return { hasError: true, error };
+  }
 
-  const handleReset = () => {
-    setHasError(false);
-    setErrorMessage('');
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    this.setState({ errorInfo });
+    if (this.props.onError) {
+      this.props.onError(error, errorInfo);
+    }
+  }
 
-    if (onReset) {
-      onReset();
+  handleReset = () => {
+    this.setState({ hasError: false, error: null, errorInfo: null });
+    if (this.props.onReset) {
+      this.props.onReset();
     }
   };
 
-  if (hasError) {
-    if (fallback) {
-      return fallback;
-    }
+  handleReload = () => {
+    window.location.reload();
+  };
 
-    return (
-      <vstack padding="large" gap="large" alignment="center middle" grow backgroundColor={BG_PRIMARY}>
-        <image
-          url="logo.png"
-          imageHeight={80}
-          imageWidth={192}
-          resizeMode="fit"
-        />
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
 
-        <vstack
-          padding="medium"
-          gap="medium"
-          backgroundColor="#FFFFFF"
-          cornerRadius="medium"
-          borderColor="#F44336"
-          width="100%"
+      const showDetails = this.props.showDetails ?? process.env.NODE_ENV === 'development';
+
+      return (
+        <div 
+          className="flex items-center justify-center min-h-full p-6 bg-[#FFF8F0] dark:bg-[#0f1419]"
+          role="alert" 
+          aria-live="assertive"
         >
-          <vstack gap="medium" alignment="center middle">
-            <text size="xxlarge">⚠️</text>
+          <div className="flex flex-col items-center gap-4 max-w-md p-8 bg-white dark:bg-[#1a2332] border-2 border-red-500 dark:border-red-500/50 rounded-2xl shadow-lg">
+            <div className="text-5xl leading-none" aria-hidden="true">
+              ⚠️
+            </div>
 
-            <vstack gap="small" alignment="center middle">
-              <text size="large" weight="bold" color="#D32F2F">
+            <div className="flex flex-col items-center gap-1 text-center">
+              <h2 className="m-0 text-xl font-bold text-red-500 dark:text-red-400">
                 Something went wrong
-              </text>
+              </h2>
+              <p className="m-0 text-sm text-neutral-500 dark:text-white/50">
+                An unexpected error occurred. Please try again or reload the page.
+              </p>
+            </div>
 
-              <text size="medium" color="#666666" alignment="center middle">
-                An error occurred while rendering this component
-              </text>
-            </vstack>
-
-            {/* Error details (for debugging) */}
-            {errorMessage && (
-              <vstack
-                padding="small"
-                gap="small"
-                backgroundColor="#FFEBEE"
-                borderColor="#F44336"
-                cornerRadius="small"
-                width="100%"
-              >
-                <text size="small" weight="bold" color="#C62828">
-                  Error Details:
-                </text>
-                <text size="xsmall" color="#D32F2F" wrap>
-                  {errorMessage}
-                </text>
-              </vstack>
+            {showDetails && this.state.error && (
+              <details className="w-full border border-neutral-200 dark:border-white/[0.12] rounded-xl overflow-hidden">
+                <summary className="px-3 py-2 text-sm font-medium text-neutral-500 dark:text-white/50 bg-neutral-100 dark:bg-[#243044] cursor-pointer select-none hover:bg-neutral-200 dark:hover:bg-[#2d3a4f] focus:outline-none focus:ring-2 focus:ring-game-primary dark:focus:ring-[#f0d078] focus:ring-inset">
+                  Error Details
+                </summary>
+                <div className="p-3 bg-red-50 dark:bg-red-500/10">
+                  <p className="m-0 mb-1 text-xs font-medium text-red-600 dark:text-red-400 break-words">
+                    {this.state.error.name}: {this.state.error.message}
+                  </p>
+                  {this.state.errorInfo?.componentStack && (
+                    <pre className="m-0 p-2 font-mono text-xs text-neutral-500 dark:text-white/50 bg-neutral-100 dark:bg-[#243044] rounded-lg overflow-x-auto whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                      {this.state.errorInfo.componentStack}
+                    </pre>
+                  )}
+                </div>
+              </details>
             )}
 
-            {/* Recovery options */}
-            <vstack gap="small" width="100%">
+            <div className="flex gap-2 w-full">
               <button
-                onPress={handleReset}
-                appearance="primary"
-                size="medium"
+                onClick={this.handleReset}
+                className="
+                  flex-1 px-4 py-2 text-sm font-medium
+                  bg-game-primary text-white
+                  border-none rounded-game-md cursor-pointer
+                  transition-all duration-200
+                  hover:-translate-y-0.5 motion-reduce:hover:translate-y-0
+                  active:translate-y-0
+                  focus:outline-none focus:ring-2 focus:ring-game-primary focus:ring-offset-2
+                "
+                type="button"
               >
                 Try Again
               </button>
+              <button
+                onClick={this.handleReload}
+                className="
+                  flex-1 px-4 py-2 text-sm font-medium
+                  bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-white
+                  border border-neutral-200 dark:border-neutral-700 rounded-game-md cursor-pointer
+                  transition-all duration-200
+                  hover:-translate-y-0.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 motion-reduce:hover:translate-y-0
+                  active:translate-y-0
+                  focus:outline-none focus:ring-2 focus:ring-game-primary focus:ring-offset-2
+                "
+                type="button"
+              >
+                Reload Page
+              </button>
+            </div>
 
-              <text size="xsmall" color="#999999" alignment="center middle">
-                If the problem persists, please contact support
-              </text>
-            </vstack>
-          </vstack>
-        </vstack>
-      </vstack>
-    );
+            <p className="m-0 text-xs text-neutral-400 dark:text-white/30 text-center">
+              If the problem persists, please contact support.
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
   }
-
-  return <>{children}</>;
-};
+}
 
 /**
  * Higher-order component to wrap a component with error boundary
@@ -135,24 +165,24 @@ export const ErrorBoundary: Devvit.BlockComponent<ErrorBoundaryProps> = (
  * ```
  */
 export function withErrorBoundary<P extends object>(
-  Component: Devvit.BlockComponent<P>,
+  Component: React.ComponentType<P>,
   options?: {
-    fallback?: JSX.Element;
-    onError?: (error: Error) => void;
+    fallback?: ReactNode;
+    onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
     onReset?: () => void;
+    showDetails?: boolean;
   }
-): Devvit.BlockComponent<P> {
+): React.FC<P> {
   return (props: P) => {
     return (
       <ErrorBoundary
         fallback={options?.fallback}
         onError={options?.onError}
         onReset={options?.onReset}
+        showDetails={options?.showDetails}
       >
         <Component {...props} />
       </ErrorBoundary>
     );
   };
 }
-
-

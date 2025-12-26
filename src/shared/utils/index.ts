@@ -12,3 +12,4 @@ export * from './request-deduplication.js';
 export * from './challenge-utils.js';
 export * from './pagination.js';
 export * from './parallel-fetch.js';
+export * from './win-ratio.js';

@@ -3,7 +3,8 @@
  * Helper functions that require async context (Reddit API calls)
  */
 
-import type { Context } from '@devvit/public-api';
+import type { Context } from '@devvit/server/server-context';
+import { redis, reddit } from '@devvit/web/server';
 import { CacheService, TTL } from '../services/cache.service.js';
 import { CacheKeyBuilder } from '../../shared/utils/cache.js';
 
@@ -14,11 +15,11 @@ import { CacheKeyBuilder } from '../../shared/utils/cache.js';
  * @returns Avatar URL or undefined if not found
  */
 export async function fetchAvatarUrl(
-  context: Context,
+  _context: Context,
   username: string
 ): Promise<string | undefined> {
   try {
-    const user = await context.reddit.getUserByUsername(username);
+    const user = await reddit.getUserByUsername(username);
     return user ? await user.getSnoovatarUrl() : undefined;
   } catch {
     return undefined;
@@ -55,12 +56,12 @@ export async function fetchAvatarUrlCached(
  * @returns Cached avatar URL or null if not cached
  */
 export async function getCachedAvatarUrl(
-  context: Context,
+  _context: Context,
   username: string
 ): Promise<string | null> {
   try {
     const cacheKey = CacheKeyBuilder.createKey('avatar', username);
-    const value = await context.redis.get(cacheKey);
+    const value = await redis.get(cacheKey);
     return value || null;
   } catch {
     return null;
@@ -76,13 +77,13 @@ export async function getCachedAvatarUrl(
  * @param avatarUrl - Avatar URL to cache
  */
 export async function setCachedAvatarUrl(
-  context: Context,
+  _context: Context,
   username: string,
   avatarUrl: string
 ): Promise<void> {
   try {
     const cacheKey = CacheKeyBuilder.createKey('avatar', username);
-    await context.redis.set(cacheKey, avatarUrl, {
+    await redis.set(cacheKey, avatarUrl, {
       expiration: new Date(Date.now() + TTL.AVATAR),
     });
   } catch {

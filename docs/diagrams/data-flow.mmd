@@ -1,0 +1,39 @@
+%%{init: {'theme': 'base'}}%%
+
+flowchart LR
+    subgraph UserActions["User Actions"]
+        Click[Click/Tap]
+        Type[Type Input]
+        Navigate[Navigate]
+    end
+    
+    subgraph StateManagement["State Management"]
+        Dispatch[dispatch]
+        Reducer[gameReducer]
+        State[GameState]
+    end
+    
+    subgraph Effects["Side Effects"]
+        API[API Calls]
+        Storage[Local Storage]
+    end
+    
+    subgraph UI["UI Updates"]
+        Render[Re-render]
+        Announce[Screen Reader]
+    end
+    
+    Click --> Dispatch
+    Type --> Dispatch
+    Navigate --> Dispatch
+    
+    Dispatch --> Reducer
+    Reducer --> State
+    State --> Render
+    State --> Announce
+    
+    Dispatch --> API
+    API --> Dispatch
+    
+    State --> Storage
+    Storage --> State

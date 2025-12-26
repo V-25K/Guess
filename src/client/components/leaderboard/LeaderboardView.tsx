@@ -1,405 +1,133 @@
 /**
- * LeaderboardView Component - Simplified & Compact
- * Shows top 5 players per page with pagination
- * Uses context.cache() for automatic data loading
- *
- * Requirements: 1.1, 2.1, 3.1, 3.2, 3.3, 5.2, 5.3
+ * Leaderboard View Component
+ * Displays top players and user's rank using Tailwind CSS
+ * Requirements: 1.2
  */
 
-import { Devvit, useAsync, useState } from "@devvit/public-api";
-import type {
-  LeaderboardService,
-  PaginatedLeaderboardResult,
-} from "../../../server/services/leaderboard.service.js";
-import { YourRankSection } from "./YourRankSection.js";
-import { BG_PRIMARY } from "../../constants/colors.js";
-
-// Leaderboard page size constant - 5 entries per page to fit Devvit output scene constraints
-const LEADERBOARD_PAGE_SIZE = 5;
+import React, { useEffect, useState } from 'react';
+import { LoadingView } from '../shared/LoadingView';
+import { ErrorView } from '../shared/ErrorView';
+import { LeaderboardEntry } from './LeaderboardEntry';
+import { YourRankSection } from './YourRankSection';
+import { useGameReducer } from '../../hooks/useGameReducer';
+import { apiClient } from '../../api/client';
+import type { LeaderboardResponse } from '../../api/client';
 
 export interface LeaderboardViewProps {
-  userId: string;
-  leaderboardService: LeaderboardService;
-  pageSize?: number;
-  cachedData?: PaginatedLeaderboardResult | null;
-  onDataLoaded?: (data: PaginatedLeaderboardResult) => void;
+  onBack?: () => void;
 }
 
-/**
- * LeaderboardView with pagination support
- * Shows 5 players per page with navigation controls
- */
-export const LeaderboardView: Devvit.BlockComponent<LeaderboardViewProps> = (
-  {
-    userId,
-    leaderboardService,
-    pageSize = LEADERBOARD_PAGE_SIZE,
-    cachedData,
-    onDataLoaded,
-  },
-  context
-) => {
-  // Pagination state - initialized to page 0 (first page)
-  const [currentPage, setCurrentPage] = useState(0);
-  // Retry counter to force re-fetch on error retry
-  // Requirements: 5.3
-  const [retryCount, setRetryCount] = useState(0);
-  // Track previous data for preserving YourRankSection during page transitions
-  // Requirements: 5.2
-  const [previousUserRank, setPreviousUserRank] = useState<
-    PaginatedLeaderboardResult["userRank"] | null
-  >(null);
+export function LeaderboardView({ onBack }: LeaderboardViewProps) {
+  const { state } = useGameReducer();
+  const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
+  const [entries, setEntries] = useState<LeaderboardResponse['entries']>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
 
-  const { data, loading, error } = useAsync<PaginatedLeaderboardResult>(
-    async () => {
-      return await context.cache(
-        async () => {
-          const result =
-            await leaderboardService.getLeaderboardWithUserPaginated(
-              userId,
-              pageSize,
-              currentPage
-            );
-          return result;
-        },
-        {
-          key: `leaderboard:page${currentPage}:size${pageSize}:retry${retryCount}`,
-          ttl: 60 * 1000, // 1 minute
-        }
-      );
-    },
-    {
-      depends: [pageSize, currentPage, retryCount], // Re-fetch if pageSize, currentPage, or retryCount changes
-    }
-  );
+  useEffect(() => {
+    fetchLeaderboard(1);
+  }, []);
 
-  // Update parent cache when fresh data arrives (only for page 0 to avoid complexity)
-  if (data && onDataLoaded && currentPage === 0) {
-    onDataLoaded(data);
-  }
+  const fetchLeaderboard = async (pageNum: number) => {
+    try {
+      if (pageNum === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
+      setError(null);
 
-  // Update previousUserRank when data is available
-  // This preserves YourRankSection during page transitions
-  if (data?.userRank && data.userRank !== previousUserRank) {
-    setPreviousUserRank(data.userRank);
-  }
+      const data = await apiClient.getLeaderboard(20, pageNum);
 
-  // Use fresh data if available, otherwise use cached data (only for page 0)
-  const displayData = data || (currentPage === 0 ? cachedData : null);
+      setLeaderboard(data);
+      if (pageNum === 1) {
+        setEntries(data.entries);
+      } else {
+        setEntries(prev => [...prev, ...data.entries]);
+      }
 
-  // Calculate totalPages from data
-  const totalPages = displayData?.totalPages || 1;
+      setHasMore(data.hasNextPage);
+      setPage(pageNum);
 
-  // Pagination control handlers with bounds checking
-  // Requirements: 2.4, 2.5
-  const handlePrevPage = () => {
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1);
+    } catch (err) {
+      console.error('Error fetching leaderboard:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load leaderboard');
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
     }
   };
 
-  const handleNextPage = () => {
-    if (currentPage < totalPages - 1) {
-      setCurrentPage(currentPage + 1);
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop, clientHeight, scrollHeight } = e.currentTarget;
+    if (scrollHeight - scrollTop <= clientHeight + 50) {
+      if (!loading && !loadingMore && hasMore) {
+        fetchLeaderboard(page + 1);
+      }
     }
   };
 
-  // Retry handler for error state
-  // Requirements: 5.3
-  const handleRetry = () => {
-    // Trigger re-fetch by incrementing retry counter
-    setRetryCount(retryCount + 1);
-  };
+  if (loading && page === 1) {
+    return <LoadingView message="Loading leaderboard..." />;
+  }
 
-  const entries = displayData?.entries || [];
-  // Use current userRank if available, otherwise fall back to previous or cached
-  // This preserves YourRankSection visibility during loading
-  // Requirements: 5.2
-  const userRank =
-    displayData?.userRank ?? previousUserRank ?? cachedData?.userRank ?? null;
-
-  // Initial loading state (no previous data AND no cached data)
-  if (loading && !previousUserRank && !displayData) {
+  if (error && page === 1) {
     return (
-      <hstack
-        alignment="center middle"
-        padding="large"
-        gap="medium"
-        grow
-        backgroundColor={BG_PRIMARY}
-      >
-        <text size="xlarge">⏳</text>
-        <text size="medium" color="#878a8c">
-          Loading leaderboard...
-        </text>
-      </hstack>
+      <ErrorView
+        title="Failed to Load Leaderboard"
+        message={error || 'Unable to load leaderboard data'}
+        onRetry={() => fetchLeaderboard(1)}
+      />
     );
   }
 
-  // Error state with retry button
-  // Requirements: 5.3
-  if (error && !loading) {
-    return (
-      <vstack
-        padding="medium"
-        gap="small"
-        width="100%"
-        height="100%"
-        backgroundColor={BG_PRIMARY}
-      >
-        {/* Header */}
-        <hstack
-          padding="small"
-          gap="small"
-          width="100%"
-          backgroundColor="#FFFFFF"
-          cornerRadius="medium"
-          alignment="middle"
-        >
-          <text size="xlarge">🏆</text>
-          <text size="large" weight="bold" color="#1c1c1c">
-            Top Players
-          </text>
-          <text size="small" color="#878a8c">
-            (Ranked by Total Points)
-          </text>
-        </hstack>
-
-        {/* Your Rank Section - Preserved during error state if available */}
-        {userRank && (
-          <vstack width="100%">
-            <text size="small" weight="bold" color="#878a8c">
-              Your Rank
-            </text>
-            <YourRankSection userRank={userRank} isLoading={false} />
-          </vstack>
-        )}
-
-        {/* Error message with retry */}
-        <vstack
-          alignment="center middle"
-          padding="large"
-          gap="medium"
-          grow
-          backgroundColor="#FFFFFF"
-          cornerRadius="medium"
-        >
-          <text size="xlarge">⚠️</text>
-          <text size="medium" weight="bold" color="#1c1c1c">
-            Failed to load leaderboard
-          </text>
-          <text size="small" color="#878a8c" alignment="center">
-            {error?.message || "An error occurred while fetching data"}
-          </text>
-          <button onPress={handleRetry} appearance="primary" size="medium">
-            Retry
-          </button>
-        </vstack>
-      </vstack>
-    );
-  }
-
-  // Empty state (no entries and no error and no cached data)
-  if (!loading && entries.length === 0 && !error && !displayData) {
-    return (
-      <vstack
-        alignment="center middle"
-        padding="large"
-        gap="medium"
-        grow
-        backgroundColor={BG_PRIMARY}
-      >
-        <text size="xlarge">🏆</text>
-        <text size="large" weight="bold">
-          Leaderboard
-        </text>
-        <text size="medium" color="#878a8c" alignment="center">
-          No players yet
-        </text>
-      </vstack>
-    );
-  }
-
-  const getMedal = (rank: number) => {
-    if (rank === 1) return "🥇";
-    if (rank === 2) return "🥈";
-    if (rank === 3) return "🥉";
-    return `${rank}.`;
+  // Safely extract deeply nested user rank data
+  const currentUserData = {
+    rank: leaderboard?.userRank?.rank ?? null,
+    username: leaderboard?.userRank?.username || state.user?.username || 'You',
+    level: leaderboard?.userRank?.level || state.user?.level || 1,
+    totalPoints: leaderboard?.userRank?.totalPoints ?? state.user?.total_points ?? 0
   };
 
   return (
-    <zstack width="100%" height="100%">
-      {/* Main content layer */}
-      <vstack
-        padding="medium"
-        gap="small"
-        width="100%"
-        height="100%"
-        backgroundColor={BG_PRIMARY}
-        alignment="center"
+    <div className="flex flex-col h-full w-full bg-[#FFF8F0] dark:bg-[#0f1419] text-neutral-900 dark:text-white/95 overflow-hidden relative">
+      {/* Your Rank Section (Top) */}
+      <YourRankSection
+        userRank={currentUserData}
+        totalPlayers={leaderboard?.totalPlayers || leaderboard?.totalEntries || 0}
+        isLoading={loading && page === 1}
+      />
+
+      {/* Leaderboard List */}
+      <div
+        className="flex-1 overflow-y-auto overscroll-contain p-4 pb-20 flex flex-col gap-2"
+        onScroll={handleScroll}
       >
-        {/* Header with page indicator */}
-        <hstack
-          padding="medium"
-          gap="medium"
-          width="100%"
-          backgroundColor="#FFFFFF"
-          cornerRadius="medium"
-          alignment="middle"
-        >
-          <hstack grow>
-            <spacer size="medium" />
-            <text size="large" weight="bold" color="#1c1c1c">
-              Total Players:
-            </text>
-            <spacer />
-            <text size="medium" color="#878a8c">
-              {displayData?.totalEntries || 0}
-            </text>
-            <spacer />
-          </hstack>
-          {/* Page indicator - always show if more than 1 page */}
-          <vstack
-            padding="xsmall"
-            backgroundColor="#F0F0F0"
-            cornerRadius="small"
-          >
-            <text size="xsmall" weight="bold" color="#1c1c1c">
-              {currentPage + 1}/{totalPages}
-            </text>
-          </vstack>
-        </hstack>
+        {entries.map((entry) => (
+          <LeaderboardEntry
+            key={`${entry.userId}-${entry.rank}`}
+            entry={entry}
+            isCurrentUser={state.user?.user_id === entry.userId}
+          />
+        ))}
 
-        {/* Loading indicator during page transitions - only show if no data to display */}
-        {loading && entries.length === 0 && (
-          <vstack
-            alignment="center middle"
-            padding="medium"
-            gap="small"
-            width="100%"
-            backgroundColor="#FFFFFF"
-            cornerRadius="medium"
-          >
-            <text size="large">⏳</text>
-            <text size="small" color="#878a8c">
-              Loading page {currentPage + 1}...
-            </text>
-          </vstack>
+        {loadingMore && (
+          <div className="text-center p-4 text-neutral-500 dark:text-white/50">
+            Loading more...
+          </div>
         )}
 
-        {/* Leaderboard List */}
-        {entries.length > 0 && (
-          <vstack gap="small" width="85%" alignment="center middle">
-            {entries.map((entry, index) => {
-              const rank = entry.rank || currentPage * pageSize + index + 1;
-              const isCurrentUser = entry.userId === userId;
-              const isTopThree = rank <= 3;
-
-              return (
-                <hstack
-                  key={entry.userId}
-                  padding="small"
-                  gap="small"
-                  backgroundColor={isCurrentUser ? "#FFF4E6" : "#FFFFFF"}
-                  borderColor={isCurrentUser ? "#FF4500" : "#E0E0E0"}
-                  cornerRadius="small"
-                  alignment="middle"
-                  width="100%"
-                >
-                  {/* Rank/Medal */}
-                  <vstack width="40px" alignment="center middle">
-                    <text
-                      size={isTopThree ? "large" : "medium"}
-                      weight={isTopThree ? "bold" : "regular"}
-                    >
-                      {getMedal(rank)}
-                    </text>
-                  </vstack>
-
-                  {/* Username */}
-                  <vstack grow>
-                    <text
-                      size="medium"
-                      weight={isCurrentUser ? "bold" : "regular"}
-                      color={isCurrentUser ? "#FF4500" : "#1c1c1c"}
-                    >
-                      {isCurrentUser
-                        ? `${entry.username} (You)`
-                        : entry.username}
-                    </text>
-                    <text size="xsmall" color="#878a8c">
-                      Level {entry.level}
-                    </text>
-                  </vstack>
-
-                  {/* Points */}
-                  <vstack alignment="end middle">
-                    <text size="large" weight="bold" color="#FF4500">
-                      {entry.totalPoints}
-                    </text>
-                    <text size="xsmall" color="#878a8c">
-                      pts
-                    </text>
-                  </vstack>
-                </hstack>
-              );
-            })}
-          </vstack>
+        {!hasMore && entries.length > 0 && (
+          <div className="text-center py-6 text-neutral-400 dark:text-white/30 text-xs">
+            {entries.length >= 100
+              ? '~ Top 100 Leaderboard Complete ~'
+              : `~ ${entries.length} Players on Leaderboard ~`}
+          </div>
         )}
-
-        {/* Spacer to make room for fixed bottom YourRankSection */}
-        <spacer size="large" />
-        <spacer size="medium" />
-      </vstack>
-
-      {/* Floating Navigation Arrows - Always visible with bordered appearance */}
-      <hstack width="100%" height="100%" alignment="middle">
-        {/* Left Arrow */}
-        <vstack height="100%" alignment="middle start" padding="small">
-          <button
-            icon="left-fill"
-            size="small"
-            appearance="secondary"
-            textColor="global-white"
-            lightTextColor="global-white"
-            darkTextColor="global-white"
-            onPress={handlePrevPage}
-            disabled={currentPage === 0}
-          />
-        </vstack>
-
-        <spacer grow />
-
-        {/* Right Arrow */}
-        <vstack height="100%" alignment="middle end" padding="small">
-          <button
-            icon="right-fill"
-            size="small"
-            appearance="secondary"
-            textColor="global-white"
-            lightTextColor="global-white"
-            darkTextColor="global-white"
-            onPress={handleNextPage}
-            disabled={currentPage >= totalPages - 1}
-          />
-        </vstack>
-      </hstack>
-
-      {/* Your Rank Section - Fixed at bottom, highest z-index (rendered last in zstack) */}
-      <vstack width="100%" height="100%" alignment="bottom">
-        <vstack width="100%" padding="small" backgroundColor={BG_PRIMARY}>
-          <hstack width="100%" alignment="middle">
-            <text size="small" weight="bold" color="#878a8c">
-              Your Rank
-            </text>
-            <spacer grow />
-            <text size="xsmall" color="#878a8c">
-              Auto-refresh 1m
-            </text>
-          </hstack>
-          <YourRankSection userRank={userRank} isLoading={false} />
-        </vstack>
-      </vstack>
-    </zstack>
+      </div>
+    </div>
   );
-};
+}

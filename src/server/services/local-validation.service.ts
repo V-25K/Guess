@@ -11,7 +11,7 @@
 
 import { BaseService } from "./base.service.js";
 import type { Challenge } from "../../shared/models/challenge.types.js";
-import type { Context } from "@devvit/public-api";
+import type { Context } from "@devvit/server/server-context";
 
 /**
  * LocalValidationResult Type
@@ -205,12 +205,12 @@ export class LocalValidationService extends BaseService {
      */
     private getCorrectExplanation(): string {
         const messages = [
-            "🎉 You got it!",
-            "✨ Correct!",
-            "🎯 Spot on!",
-            "💯 That's the answer!",
-            "🏆 Perfect!",
-            "⭐ Nailed it!",
+            "You got it!",
+            "Correct!",
+            "Spot on!",
+            "That's the answer!",
+            "Perfect!",
+            "Nailed it!",
         ];
         return messages[Math.floor(Math.random() * messages.length)];
     }
@@ -220,12 +220,12 @@ export class LocalValidationService extends BaseService {
      */
     private getCloseExplanation(): string {
         const messages = [
-            "🔥 Getting warmer...",
-            "🤔 You're on the right track!",
-            "💭 Very close!",
-            "🎯 Almost there!",
-            "✨ So close, be more specific.",
-            "💡 Think more specifically!",
+            "Getting warmer...",
+            "You're on the right track!",
+            "Very close!",
+            "Almost there!",
+            "So close, be more specific.",
+            "Think more specifically!",
         ];
         return messages[Math.floor(Math.random() * messages.length)];
     }
@@ -235,12 +235,12 @@ export class LocalValidationService extends BaseService {
      */
     private getIncorrectExplanation(): string {
         const messages = [
-            "❄️ Cold.",
-            "❌ Not quite.",
-            "🤔 Keep thinking!",
-            "💭 Give it another shot.",
-            "🎯 Nope, try again.",
-            "🔍 Not what we're looking for.",
+            "Cold.",
+            "Not quite.",
+            "Keep thinking!",
+            "Give it another shot.",
+            "Nope, try again.",
+            "Not what we're looking for.",
         ];
         return messages[Math.floor(Math.random() * messages.length)];
     }

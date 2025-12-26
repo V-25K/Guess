@@ -1,7 +1,9 @@
 /**
- * Profile Components
- * Export all profile-related components
+ * Profile Components Barrel Export
  */
 
-export { ProfileView } from './ProfileView.js';
-export type { ProfileViewProps } from './ProfileView.js';
+export { ProfileView } from './ProfileView';
+export type { ProfileViewProps } from './ProfileView';
+
+export { StatsGrid } from './StatsGrid';
+export type { StatsGridProps, StatItem } from './StatsGrid';

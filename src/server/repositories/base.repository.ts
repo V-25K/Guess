@@ -3,10 +3,16 @@
  * 
  * Abstract base class providing common database operations for all repositories.
  * Handles Supabase REST API interactions with consistent error handling and type safety.
+ * Uses Result pattern for explicit error handling.
  */
 
-import type { Context } from '@devvit/public-api';
+import type { Context } from '@devvit/server/server-context';
 import { getSupabaseConfig } from '../utils/config-cache.js';
+import type { Result } from '../../shared/utils/result.js';
+import { ok } from '../../shared/utils/result.js';
+import type { AppError } from '../../shared/models/errors.js';
+import { databaseError } from '../../shared/models/errors.js';
+import { tryCatch } from '../../shared/utils/result-adapters.js';
 
 /**
  * Query options for SELECT operations
@@ -105,7 +111,7 @@ export abstract class BaseRepository {
    * @param anonKey - Supabase anonymous key
    * @param body - Optional request body
    * @param additionalHeaders - Optional additional headers
-   * @returns Response or null on error
+   * @returns Result containing Response or DatabaseError
    */
   private async executeRequest(
     url: string,
@@ -113,22 +119,23 @@ export abstract class BaseRepository {
     anonKey: string,
     body?: string,
     additionalHeaders?: Record<string, string>
-  ): Promise<Response | null> {
-    try {
-      const response = await fetch(url, {
-        method,
-        headers: this.createHeaders(anonKey, additionalHeaders),
-        body,
-      });
+  ): Promise<Result<Response, AppError>> {
+    return tryCatch(
+      async () => {
+        const response = await fetch(url, {
+          method,
+          headers: this.createHeaders(anonKey, additionalHeaders),
+          body,
+        });
 
-      if (!response.ok) {
-        return null;
-      }
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
 
-      return response;
-    } catch (error) {
-      return null;
-    }
+        return response;
+      },
+      (error) => databaseError(method.toLowerCase(), String(error))
+    );
   }
 
   /**
@@ -148,64 +155,78 @@ export abstract class BaseRepository {
    * Execute SELECT query on a table
    * @param table - Table name
    * @param options - Query options for filtering, sorting, and pagination
-   * @returns Array of records (empty array on error)
+   * @returns Result containing array of records or DatabaseError
    */
-  protected async query<T>(table: string, options: QueryOptions = {}): Promise<T[]> {
-    try {
-      const config = await this.getSupabaseConfig();
-      const url = this.buildQueryUrl(table, options, config.url);
-      
-      const response = await this.executeRequest(url, 'GET', config.anonKey);
-      if (!response) {
-        return [];
-      }
+  protected async query<T>(table: string, options: QueryOptions = {}): Promise<Result<T[], AppError>> {
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        const url = this.buildQueryUrl(table, options, config.url);
+        
+        const responseResult = await this.executeRequest(url, 'GET', config.anonKey);
+        if (responseResult.ok === false) {
+          throw new Error(JSON.stringify(responseResult.error));
+        }
 
-      const data = await response.json();
-      return data;
-    } catch (error) {
-      return [];
-    }
+        const data = await responseResult.value.json();
+        return data;
+      },
+      (error) => databaseError('query', String(error))
+    );
   }
 
   /**
    * Execute SELECT query that returns a single record
    * @param table - Table name
    * @param options - Query options for filtering
-   * @returns Single record or null if not found
+   * @returns Result containing single record (or null if not found) or DatabaseError
    */
-  protected async queryOne<T>(table: string, options: QueryOptions = {}): Promise<T | null> {
-    const results = await this.query<T>(table, { ...options, limit: 1 });
-    return results[0] || null;
+  protected async queryOne<T>(table: string, options: QueryOptions = {}): Promise<Result<T | null, AppError>> {
+    return tryCatch(
+      async () => {
+        const resultsResult = await this.query<T>(table, { ...options, limit: 1 });
+        if (resultsResult.ok === false) {
+          throw new Error(JSON.stringify(resultsResult.error));
+        }
+        return resultsResult.value[0] || null;
+      },
+      (error) => databaseError('queryOne', String(error))
+    );
   }
 
   /**
    * Insert a new record
    * @param table - Table name
    * @param data - Record data to insert
-   * @returns Inserted record or null on error
+   * @returns Result containing inserted record or DatabaseError
    */
-  protected async insert<T>(table: string, data: Partial<T>): Promise<T | null> {
-    try {
-      const config = await this.getSupabaseConfig();
-      const url = `${config.url}/rest/v1/${table}`;
-      
-      const response = await this.executeRequest(
-        url,
-        'POST',
-        config.anonKey,
-        JSON.stringify(data),
-        { 'Prefer': 'return=representation' }
-      );
+  protected async insert<T>(table: string, data: Partial<T>): Promise<Result<T, AppError>> {
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        const url = `${config.url}/rest/v1/${table}`;
+        
+        const responseResult = await this.executeRequest(
+          url,
+          'POST',
+          config.anonKey,
+          JSON.stringify(data),
+          { 'Prefer': 'return=representation' }
+        );
 
-      if (!response) {
-        return null;
-      }
+        if (responseResult.ok === false) {
+          throw new Error(JSON.stringify(responseResult.error));
+        }
 
-      const result = await response.json();
-      return result[0] || null;
-    } catch (error) {
-      return null;
-    }
+        const result = await responseResult.value.json();
+        const record = result[0];
+        if (!record) {
+          throw new Error('Insert succeeded but no record returned');
+        }
+        return record;
+      },
+      (error) => databaseError('insert', String(error))
+    );
   }
 
   /**
@@ -213,108 +234,125 @@ export abstract class BaseRepository {
    * @param table - Table name
    * @param filter - Key-value pairs for filtering records to update
    * @param data - Updated field values
-   * @returns True if successful, false otherwise
+   * @returns Result containing true on success or DatabaseError
    */
   protected async update<T>(
     table: string,
     filter: Record<string, string>,
     data: Partial<T>
-  ): Promise<boolean> {
-    try {
-      const config = await this.getSupabaseConfig();
-      const url = this.buildFilterUrl(table, filter, config.url);
-      
-      const response = await this.executeRequest(
-        url,
-        'PATCH',
-        config.anonKey,
-        JSON.stringify(data)
-      );
+  ): Promise<Result<boolean, AppError>> {
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        const url = this.buildFilterUrl(table, filter, config.url);
+        
+        const responseResult = await this.executeRequest(
+          url,
+          'PATCH',
+          config.anonKey,
+          JSON.stringify(data)
+        );
 
-      return response !== null;
-    } catch (error) {
-      console.error(`Error updating ${table}:`, error);
-      return false;
-    }
+        if (responseResult.ok === false) {
+          throw new Error(JSON.stringify(responseResult.error));
+        }
+
+        return true;
+      },
+      (error) => databaseError('update', String(error))
+    );
   }
 
   /**
    * Delete records matching filter
    * @param table - Table name
    * @param filter - Key-value pairs for filtering records to delete
-   * @returns True if successful, false otherwise
+   * @returns Result containing true on success or DatabaseError
    */
-  protected async delete(table: string, filter: Record<string, string>): Promise<boolean> {
-    try {
-      const config = await this.getSupabaseConfig();
-      const url = this.buildFilterUrl(table, filter, config.url);
-      
-      const response = await this.executeRequest(url, 'DELETE', config.anonKey);
-      return response !== null;
-    } catch (error) {
-      return false;
-    }
+  protected async delete(table: string, filter: Record<string, string>): Promise<Result<boolean, AppError>> {
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        const url = this.buildFilterUrl(table, filter, config.url);
+        
+        const responseResult = await this.executeRequest(url, 'DELETE', config.anonKey);
+        if (responseResult.ok === false) {
+          throw new Error(JSON.stringify(responseResult.error));
+        }
+        return true;
+      },
+      (error) => databaseError('delete', String(error))
+    );
   }
 
   /**
    * Count records in a table with optional filtering
    * @param table - Table name
    * @param filter - Optional key-value pairs for filtering
-   * @returns Record count (0 on error)
+   * @returns Result containing record count or DatabaseError
    */
-  protected async count(table: string, filter?: Record<string, string>): Promise<number> {
-    try {
-      const config = await this.getSupabaseConfig();
-      let url = `${config.url}/rest/v1/${table}?select=count`;
-      
-      if (filter) {
-        const params = new URLSearchParams();
-        Object.entries(filter).forEach(([key, value]) => {
-          params.append(key, `eq.${value}`);
-        });
-        url += `&${params.toString()}`;
-      }
-      
-      const response = await this.executeRequest(
-        url,
-        'GET',
-        config.anonKey,
-        undefined,
-        { 'Prefer': 'count=exact' }
-      );
+  protected async count(table: string, filter?: Record<string, string>): Promise<Result<number, AppError>> {
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        let url = `${config.url}/rest/v1/${table}?select=count`;
+        
+        if (filter) {
+          const params = new URLSearchParams();
+          Object.entries(filter).forEach(([key, value]) => {
+            params.append(key, `eq.${value}`);
+          });
+          url += `&${params.toString()}`;
+        }
+        
+        const responseResult = await this.executeRequest(
+          url,
+          'GET',
+          config.anonKey,
+          undefined,
+          { 'Prefer': 'count=exact' }
+        );
 
-      return response ? this.extractCount(response) : 0;
-    } catch (error) {
-      return 0;
-    }
+        if (responseResult.ok === false) {
+          throw new Error(JSON.stringify(responseResult.error));
+        }
+
+        return this.extractCount(responseResult.value);
+      },
+      (error) => databaseError('count', String(error))
+    );
   }
 
   /**
    * Batch insert multiple records in a single request
    * @param table - Table name
    * @param data - Array of records to insert
-   * @returns Array of inserted records (empty array on error)
+   * @returns Result containing array of inserted records or DatabaseError
    */
-  protected async batchInsert<T>(table: string, data: Partial<T>[]): Promise<T[]> {
-    if (data.length === 0) return [];
+  protected async batchInsert<T>(table: string, data: Partial<T>[]): Promise<Result<T[], AppError>> {
+    if (data.length === 0) return ok([]);
 
-    try {
-      const config = await this.getSupabaseConfig();
-      const url = `${config.url}/rest/v1/${table}`;
-      
-      const response = await this.executeRequest(
-        url,
-        'POST',
-        config.anonKey,
-        JSON.stringify(data),
-        { 'Prefer': 'return=representation' }
-      );
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        const url = `${config.url}/rest/v1/${table}`;
+        
+        const responseResult = await this.executeRequest(
+          url,
+          'POST',
+          config.anonKey,
+          JSON.stringify(data),
+          { 'Prefer': 'return=representation' }
+        );
 
-      if (!response) return [];
-      return await response.json();
-    } catch (error) {
-      return [];
-    }
+        if (responseResult.ok === false) {
+          throw new Error(JSON.stringify(responseResult.error));
+        }
+
+        return await responseResult.value.json();
+      },
+      (error) => databaseError('batchInsert', String(error))
+    );
   }
 
   /**
@@ -322,78 +360,94 @@ export abstract class BaseRepository {
    * @param table - Table name
    * @param filter - Key-value pairs for filtering records to update
    * @param data - Updated field values
-   * @returns Array of updated records (empty array on error)
+   * @returns Result containing array of updated records or DatabaseError
    */
   protected async batchUpdate<T>(
     table: string,
     filter: Record<string, string>,
     data: Partial<T>
-  ): Promise<T[]> {
-    try {
-      const config = await this.getSupabaseConfig();
-      const url = this.buildFilterUrl(table, filter, config.url);
-      
-      const response = await this.executeRequest(
-        url,
-        'PATCH',
-        config.anonKey,
-        JSON.stringify(data),
-        { 'Prefer': 'return=representation' }
-      );
+  ): Promise<Result<T[], AppError>> {
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        const url = this.buildFilterUrl(table, filter, config.url);
+        
+        const responseResult = await this.executeRequest(
+          url,
+          'PATCH',
+          config.anonKey,
+          JSON.stringify(data),
+          { 'Prefer': 'return=representation' }
+        );
 
-      if (!response) return [];
-      return await response.json();
-    } catch (error) {
-      return [];
-    }
+        if (responseResult.ok === false) {
+          throw new Error(JSON.stringify(responseResult.error));
+        }
+
+        return await responseResult.value.json();
+      },
+      (error) => databaseError('batchUpdate', String(error))
+    );
   }
 
   /**
    * Execute a Postgres stored procedure/function via RPC
    * @param functionName - Name of the database function
    * @param params - Function parameters as key-value pairs
-   * @returns Function result or null on error
+   * @returns Result containing function result or DatabaseError
    */
   protected async executeFunction<T>(
     functionName: string,
     params: Record<string, unknown>
-  ): Promise<T | null> {
-    try {
-      const config = await this.getSupabaseConfig();
-      const url = `${config.url}/rest/v1/rpc/${functionName}`;
-      
-      const response = await this.executeRequest(
-        url,
-        'POST',
-        config.anonKey,
-        JSON.stringify(params)
-      );
+  ): Promise<Result<T, AppError>> {
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        const url = `${config.url}/rest/v1/rpc/${functionName}`;
+        
+        const responseResult = await this.executeRequest(
+          url,
+          'POST',
+          config.anonKey,
+          JSON.stringify(params)
+        );
 
-      if (!response) {
-        return null;
-      }
-      
-      return await response.json();
-    } catch (error) {
-      return null;
-    }
+        if (responseResult.ok === false) {
+          throw new Error(JSON.stringify(responseResult.error));
+        }
+        
+        // Handle empty response body gracefully
+        const text = await responseResult.value.text();
+        if (!text || text.trim() === '') {
+          return null as T;
+        }
+        
+        return JSON.parse(text);
+      },
+      (error) => databaseError('executeFunction', String(error))
+    );
   }
 
   /**
    * Execute a Postgres function that returns a boolean result
    * @param functionName - Name of the database function
    * @param params - Function parameters as key-value pairs
-   * @returns Boolean result or false on error
+   * @returns Result containing boolean result or DatabaseError
    */
   protected async executeBooleanFunction(
     functionName: string,
     params: Record<string, unknown>
-  ): Promise<boolean> {
-    try {
-      const result = await this.executeFunction<boolean>(functionName, params);
-      return result === true;
-    } catch (error) {
-      return false;
-    }
+  ): Promise<Result<boolean, AppError>> {
+    return tryCatch(
+      async () => {
+        const result = await this.executeFunction<boolean | null>(functionName, params);
+        if (result.ok === false) {
+          throw new Error(JSON.stringify(result.error));
+        }
+        // Handle null/undefined as false, otherwise check for true
+        return result.value === true;
+      },
+      (error) => databaseError('executeBooleanFunction', String(error))
+    );
   }
 }

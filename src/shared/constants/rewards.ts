@@ -22,10 +22,10 @@ export const LEVEL_PROGRESSION = {
  * Bonus rewards for special achievements
  */
 export const BONUSES: Record<BonusType, Omit<Bonus, 'type'>> = {
-  first_clear: { points: 50, exp: 50, label: '🎉 First Clear!' },
-  perfect_solve: { points: 20, exp: 20, label: '✨ Perfect!' },
-  speed_demon: { points: 5, exp: 5, label: '⚡ Speed Demon!' },
-  comeback_king: { points: 3, exp: 3, label: '👑 Comeback King!' },
-  streak: { points: 3, exp: 3, label: '🔥 Streak Bonus!' },
-  creator_bonus: { points: 2, exp: 2, label: '🎨 Creator Bonus!' },
+  first_clear: { points: 50, exp: 50, label: 'First Clear!' },
+  perfect_solve: { points: 20, exp: 20, label: 'Perfect!' },
+  speed_demon: { points: 5, exp: 5, label: 'Speed Demon!' },
+  comeback_king: { points: 3, exp: 3, label: 'Comeback King!' },
+  streak: { points: 3, exp: 3, label: 'Streak Bonus!' },
+  creator_bonus: { points: 2, exp: 2, label: 'Creator Bonus!' },
 } as const;

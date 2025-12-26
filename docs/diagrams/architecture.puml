@@ -1,0 +1,85 @@
+@startuml GuessTheLink Architecture
+
+!theme plain
+skinparam componentStyle rectangle
+skinparam backgroundColor #FEFEFE
+
+title GuessTheLink - Component Architecture
+
+package "React Client (Devvit Web)" {
+    component [App.tsx] as App
+    
+    package "Views" {
+        component [MainMenuView] as MainMenu
+        component [GameplayView] as Gameplay
+        component [ProfileView] as Profile
+        component [LeaderboardView] as Leaderboard
+        component [CreateChallengeView] as Create
+    }
+    
+    package "Shared Components" {
+        component [Button] as Btn
+        component [Input] as Inp
+        component [Card] as Crd
+        component [Modal] as Mdl
+        component [Toast] as Tst
+        component [Badge] as Bdg
+        component [ErrorBoundary] as EB
+    }
+    
+    package "Hooks" {
+        component [useGameReducer] as GR
+        component [useToast] as UT
+    }
+    
+    package "API Layer" {
+        component [ApiClient] as AC
+        component [ApiError] as AE
+    }
+    
+    package "Design System" {
+        component [Design Tokens] as DT
+        component [Component Styles] as CS
+        component [Feature Styles] as FS
+    }
+}
+
+package "Devvit Server" {
+    component [API Routes] as Routes
+    component [Services] as Svc
+    component [Repositories] as Repo
+}
+
+database "Reddit Storage" {
+    component [Redis KV Store] as Redis
+}
+
+App --> MainMenu
+App --> Gameplay
+App --> Profile
+App --> Leaderboard
+App --> Create
+
+MainMenu --> Btn
+MainMenu --> Crd
+Gameplay --> Btn
+Gameplay --> Inp
+Gameplay --> Crd
+Profile --> Crd
+Profile --> Bdg
+Leaderboard --> Crd
+Create --> Inp
+Create --> Btn
+
+App --> GR
+GR --> AC
+AC --> Routes
+Routes --> Svc
+Svc --> Repo
+Repo --> Redis
+
+Btn --> DT
+Inp --> DT
+Crd --> DT
+
+@enduml
