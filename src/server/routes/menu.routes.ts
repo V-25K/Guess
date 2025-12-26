@@ -29,7 +29,7 @@ router.post('/create-test-post', async (_req: Request, res: Response) => {
     // Create a custom post with the webview
     const post = await reddit.submitCustomPost({
       subredditName,
-      title: 'Guess The Link - Test Game',
+      title: 'Play it NOw',
       entry: 'default'
     });
 
