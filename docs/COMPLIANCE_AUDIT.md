@@ -44,7 +44,7 @@ The app uses HTTP Fetch with the following domains:
 | Requirement | Compliance |
 |-------------|------------|
 | Uses approved LLM | ✅ Google Gemini (approved) |
-| Provides significant benefit | ✅ Answer validation for gameplay |
+| Provides significant benefit | ✅ Answer variation generation for flexible matching |
 | Does not train models with Reddit data | ✅ Confirmed |
 | Has ToS and Privacy Policy | ✅ Created |
 
@@ -53,7 +53,7 @@ The app uses HTTP Fetch with the following domains:
 - Purpose: Generate answer variations during challenge creation (once per challenge)
 - Data Sent: Challenge answers, image descriptions, answer explanations (creator-provided only)
 - Data NOT Sent: Player guesses, Reddit user IDs, usernames, or personal information
-- Player guesses are validated locally against pre-generated answer sets
+- Player guesses are validated locally against pre-generated answer sets (no AI calls during gameplay)
 
 ### 1.3 Redis Data Storage
 
