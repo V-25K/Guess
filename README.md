@@ -55,26 +55,26 @@ Experience = Points earned (1:1 ratio)
 
 Level thresholds use linear growth: `50 × level` per level increment
 
-| Level | EXP Required |
-|-------|--------------|
+| Level | Total EXP Required |
+|-------|-------------------|
 | 2 | 100 |
 | 3 | 250 |
 | 4 | 450 |
 | 5 | 700 |
-| 10 | 2,750 |
+| 10 | 2,700 |
 
 ## Creating Challenges
 
 - Add 2-3 images with a common theme
 - Set the correct answer
 - Earn +5 points for creating
-- Earn +1 point when others comment
+- Earn +2 points when someone solves your challenge (Creator Bonus)
 
 Rate limit: 1 challenge per 24 hours
 
 ## Themes
 
-🎌 Anime • 🌐 General • ⚽ Sport • 🎬 Movies • 🎵 Music • 🎮 Gaming • 📜 History • 🔬 Science • 🗺️ Geography • 🍕 Food • 🎨 Art • 💻 Technology • 🌿 Nature • ⭐ Celebrities • 🏷️ Brands
+🎌 Anime • 🌐 General • ⚽ Sport • 🎬 Movies • 🎵 Music • 🎮 Gaming • 📜 History • 🔬 Science • 🗺️ Geography • 🍕 Food • 🎨 Art • 💻 Technology
 
 ## Leaderboard
 
