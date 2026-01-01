@@ -1,13 +1,13 @@
 # Linkaroo
 
-A Reddit game where players guess the common link between images. Built on Devvit with AI-powered answer validation.
+A Reddit game where players guess the common link between images. Built on Devvit with smart answer matching.
 
 ## How to Play
 
 1. Select a challenge from the list
 2. View all images displayed
 3. Guess what connects them (up to 10 attempts)
-4. AI validates your answer
+4. Get instant feedback on your guess
 5. Earn points based on how quickly you solve it
 
 ## Scoring

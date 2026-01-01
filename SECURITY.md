@@ -100,12 +100,15 @@ Rate limiting is implemented to prevent abuse and ensure fair usage.
 
 ## AI Security
 
-### Google Gemini API
+### Google Gemini API (Challenge Creation Only)
 
-- **API Key Security**: Stored in environment variables
+- **Usage**: AI is used only once per challenge at creation time to generate answer variations
+- **No Runtime AI**: Player guesses are validated locally against pre-generated answer sets
+- **API Key Security**: Stored in Devvit secure settings (not in code)
 - **Rate Limiting**: Respects Gemini API rate limits
-- **Fallback**: Graceful degradation to exact matching if AI unavailable
+- **Fallback**: Graceful degradation to basic matching if AI unavailable
 - **Input Validation**: All inputs validated before sending to AI
+- **Data Sent**: Only challenge answers, image descriptions, explanations (no user data)
 
 ## Devvit Platform Security
 
