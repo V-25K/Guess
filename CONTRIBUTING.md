@@ -1,4 +1,4 @@
-# Contributing to Guess The Link
+# Contributing to Linkaroo
 
 ## Development Setup
 1. Clone the repository

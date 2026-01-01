@@ -420,7 +420,6 @@ export function App() {
   }
 
   return (
-    <ToastProvider>
     <div className="app-container">
       {/* Skip to content link for keyboard users */}
       <a href="#main-content" className="skip-link">
@@ -542,6 +541,5 @@ export function App() {
         />
       )}
     </div>
-    </ToastProvider>
   );
 }

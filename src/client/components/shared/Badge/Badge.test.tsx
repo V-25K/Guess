@@ -24,19 +24,19 @@ describe('Badge Component', () => {
   it('applies success variant styling', () => {
     const { container } = render(<Badge variant="success">Content</Badge>);
     const badge = container.querySelector('span');
-    expect(badge).toHaveClass('bg-success-light');
+    expect(badge).toHaveClass('bg-green-100');
   });
 
   it('applies error variant styling', () => {
     const { container } = render(<Badge variant="error">Content</Badge>);
     const badge = container.querySelector('span');
-    expect(badge).toHaveClass('bg-error-light');
+    expect(badge).toHaveClass('bg-red-100');
   });
 
   it('applies warning variant styling', () => {
     const { container } = render(<Badge variant="warning">Content</Badge>);
     const badge = container.querySelector('span');
-    expect(badge).toHaveClass('bg-warning-light');
+    expect(badge).toHaveClass('bg-amber-100');
   });
 
   it('applies default size styling (md)', () => {
@@ -61,7 +61,7 @@ describe('Badge Component', () => {
       </Badge>
     );
     const badge = container.querySelector('span');
-    expect(badge).toHaveClass('bg-success-light');
+    expect(badge).toHaveClass('bg-green-100');
     expect(badge).toHaveClass('px-2');
     expect(badge).toHaveClass('text-xs');
   });

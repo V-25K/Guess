@@ -50,9 +50,11 @@ export class UserRepository extends BaseRepository {
 
   /**
    * Find users ordered by points for leaderboard
+   * Excludes moderators from the leaderboard
    */
   async findByPoints(limit: number = 10, offset: number = 0): Promise<Result<UserProfile[], AppError>> {
     return this.query<UserProfile>(this.TABLE, {
+      filter: { role: 'eq.player' },
       order: 'total_points.desc',
       limit,
       offset,
@@ -62,13 +64,14 @@ export class UserRepository extends BaseRepository {
   /**
    * Count users who have attempted at least one challenge.
    * This provides a more accurate count of "players" than just checking the leaderboard cache.
+   * Excludes moderators from the count.
    */
   async countActivePlayers(): Promise<Result<number, AppError>> {
     return tryCatch(
       async () => {
         const config = await this.getSupabaseConfig();
-        // Count users with challenges_attempted > 0
-        const url = `${config.url}/rest/v1/${this.TABLE}?select=count&challenges_attempted=gt.0`;
+        // Count users with challenges_attempted > 0 and role = 'player' (exclude mods)
+        const url = `${config.url}/rest/v1/${this.TABLE}?select=count&challenges_attempted=gt.0&role=eq.player`;
 
         const response = await fetch(url, {
           method: 'GET',
@@ -99,22 +102,14 @@ export class UserRepository extends BaseRepository {
 
   /**
    * Get user's rank based on total points
-   * Returns null if user not found
+   * Returns null if user not found or if user is a moderator
    * Uses optimized database function for better performance
+   * Excludes moderators from rank calculation
    */
   async getUserRank(userId: string): Promise<Result<number | null, AppError>> {
     return tryCatch(
       async () => {
-        // Try to use the optimized function first
-        const result = await this.executeFunction<number>('get_user_rank_optimized', {
-          p_user_id: userId,
-        });
-
-        if (isOk(result) && result.value !== null) {
-          return result.value;
-        }
-
-        // Fallback to original implementation if function doesn't exist
+        // First check if user is a moderator - mods don't get ranks
         const userResult = await this.findById(userId);
         if (!isOk(userResult)) {
           throw new Error('Failed to fetch user');
@@ -125,10 +120,25 @@ export class UserRepository extends BaseRepository {
           return null;
         }
 
+        // Moderators don't appear on leaderboard, so no rank
+        if (user.role === 'mod') {
+          return null;
+        }
+
+        // Try to use the optimized function first
+        const result = await this.executeFunction<number>('get_user_rank_optimized', {
+          p_user_id: userId,
+        });
+
+        if (isOk(result) && result.value !== null) {
+          return result.value;
+        }
+
+        // Fallback to original implementation if function doesn't exist
         const config = await this.getSupabaseConfig();
 
-        // Count users with more points than this user
-        const url = `${config.url}/rest/v1/${this.TABLE}?select=count&total_points=gt.${user.total_points}`;
+        // Count non-mod users with more points than this user
+        const url = `${config.url}/rest/v1/${this.TABLE}?select=count&total_points=gt.${user.total_points}&role=eq.player`;
 
         const response = await fetch(url, {
           method: 'GET',
@@ -192,5 +202,15 @@ export class UserRepository extends BaseRepository {
       },
       (error) => databaseError('batchUpdateStats', String(error))
     );
+  }
+
+  /**
+   * Delete user profile by Reddit user ID
+   * Returns true if deletion was successful (or profile didn't exist)
+   * @param userId - Reddit user ID (t2_* format)
+   * @returns Result<boolean, AppError>
+   */
+  async deleteProfile(userId: string): Promise<Result<boolean, AppError>> {
+    return this.delete(this.TABLE, { user_id: userId });
   }
 }

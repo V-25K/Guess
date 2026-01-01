@@ -6,8 +6,8 @@
 -- and stored procedures.
 --
 -- Database: PostgreSQL (via Supabase)
--- Version: 1.0
--- Last Updated: 2024
+-- Version: 1.1
+-- Last Updated: 2025
 --
 -- Usage:
 --   psql -U postgres -d guessthelink -f schema.sql
@@ -170,44 +170,6 @@ COMMENT ON TABLE attempt_guesses IS 'Stores individual guesses made during chall
 COMMENT ON COLUMN attempt_guesses.validation_result IS 'Validation outcome: CORRECT, CLOSE, or INCORRECT';
 COMMENT ON COLUMN attempt_guesses.ai_explanation IS 'Optional AI-generated explanation for the validation result';
 
--- ----------------------------------------------------------------------------
--- comment_rewards
--- ----------------------------------------------------------------------------
--- Tracks rewards given to challenge creators for comments on their challenges.
--- Implements the engagement incentive system.
--- ----------------------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS comment_rewards (
-    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    challenge_id uuid NOT NULL,
-    creator_id text NOT NULL,
-    commenter_id text NOT NULL,
-    comment_id text NOT NULL UNIQUE,
-    points_awarded integer NOT NULL,
-    experience_awarded integer NOT NULL,
-    created_at timestamp NOT NULL DEFAULT now(),
-    
-    -- Foreign key constraints
-    CONSTRAINT fk_rewards_challenge 
-        FOREIGN KEY (challenge_id) 
-        REFERENCES challenges(id) 
-        ON DELETE CASCADE,
-    
-    CONSTRAINT fk_rewards_creator 
-        FOREIGN KEY (creator_id) 
-        REFERENCES user_profiles(user_id) 
-        ON DELETE CASCADE,
-    
-    CONSTRAINT fk_rewards_commenter 
-        FOREIGN KEY (commenter_id) 
-        REFERENCES user_profiles(user_id) 
-        ON DELETE CASCADE
-);
-
--- Add comments for documentation
-COMMENT ON TABLE comment_rewards IS 'Tracks rewards given to challenge creators for comments';
-COMMENT ON COLUMN comment_rewards.comment_id IS 'Reddit comment ID (format: t1_*) for tracking';
-
 -- ============================================================================
 -- INDEXES
 -- ============================================================================
@@ -273,29 +235,6 @@ CREATE INDEX IF NOT EXISTS idx_guesses_attempt_id
 CREATE INDEX IF NOT EXISTS idx_guesses_created_at 
     ON attempt_guesses(created_at ASC);
 
--- ----------------------------------------------------------------------------
--- comment_rewards indexes
--- ----------------------------------------------------------------------------
-
--- Index for filtering rewards by challenge
-CREATE INDEX IF NOT EXISTS idx_rewards_challenge_id 
-    ON comment_rewards(challenge_id);
-
--- Index for filtering rewards by creator
-CREATE INDEX IF NOT EXISTS idx_rewards_creator_id 
-    ON comment_rewards(creator_id);
-
--- Index for filtering rewards by commenter
-CREATE INDEX IF NOT EXISTS idx_rewards_commenter_id 
-    ON comment_rewards(commenter_id);
-
--- Index for comment_id lookup (already covered by UNIQUE constraint)
--- CREATE INDEX idx_rewards_comment_id ON comment_rewards(comment_id);
-
--- ============================================================================
--- STORED PROCEDURES AND FUNCTIONS
--- ============================================================================
-
 -- ============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
 -- ============================================================================
@@ -305,7 +244,6 @@ ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE challenges ENABLE ROW LEVEL SECURITY;
 ALTER TABLE challenge_attempts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE attempt_guesses ENABLE ROW LEVEL SECURITY;
-ALTER TABLE comment_rewards ENABLE ROW LEVEL SECURITY;
 
 -- Note: For Devvit apps, RLS policies should allow service role full access
 -- since the backend handles authorization. These policies are for direct
@@ -486,96 +424,95 @@ $$;
 COMMENT ON FUNCTION record_challenge_completion_v2 IS 'Atomically records challenge completion updating attempt and user profile';
 
 -- ----------------------------------------------------------------------------
--- track_comment_reward
+-- anonymize_inactive_users
 -- ----------------------------------------------------------------------------
--- Atomically creates a comment reward record and updates the creator's
--- profile statistics in a single transaction.
--- Returns true if successful, false otherwise.
--- ----------------------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION track_comment_reward(
-    p_challenge_id uuid,
-    p_creator_id text,
-    p_commenter_id text,
-    p_comment_id text,
-    p_points integer,
-    p_experience integer
-)
-RETURNS boolean
-LANGUAGE plpgsql
-SET search_path = public
-AS $$
-BEGIN
-    -- Insert the comment reward record
-    INSERT INTO comment_rewards (
-        challenge_id,
-        creator_id,
-        commenter_id,
-        comment_id,
-        points_awarded,
-        experience_awarded
-    ) VALUES (
-        p_challenge_id,
-        p_creator_id,
-        p_commenter_id,
-        p_comment_id,
-        p_points,
-        p_experience
-    );
-    
-    -- Update the creator's profile
-    UPDATE user_profiles
-    SET 
-        total_points = total_points + p_points,
-        total_experience = total_experience + p_experience,
-        updated_at = now()
-    WHERE user_id = p_creator_id;
-    
-    IF NOT FOUND THEN
-        RETURN false;
-    END IF;
-    
-    RETURN true;
-EXCEPTION
-    WHEN unique_violation THEN
-        -- Comment already rewarded
-        RETURN false;
-    WHEN OTHERS THEN
-        -- Other error occurred
-        RETURN false;
-END;
-$$;
-
-COMMENT ON FUNCTION track_comment_reward IS 'Atomically creates comment reward and updates creator profile';
-
--- ----------------------------------------------------------------------------
--- get_creator_comment_stats
--- ----------------------------------------------------------------------------
--- Efficiently aggregates comment reward statistics for a creator.
--- Returns total comments, points, and experience earned from comments.
+-- Anonymizes user profiles that have been inactive for a specified number of days.
+-- This function supports Devvit-compliant data retention by:
+-- 1. Identifying users whose updated_at is older than the cutoff date
+-- 2. Transforming user_id to "[deleted]:{uuid}" format
+-- 3. Setting username to "[deleted]"
+-- 4. Updating creator_username on challenges created by anonymized users
+-- 5. Skipping already-anonymized users (idempotent operation)
+--
+-- Parameters:
+--   p_days_inactive - Number of days of inactivity before anonymization (default: 30)
+--
+-- Returns:
+--   profiles_anonymized - Number of user profiles that were anonymized
+--   challenges_updated - Number of challenges where creator_username was updated
+--   attempts_updated - Number of attempts updated (reserved for future use)
 -- ----------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION get_creator_comment_stats(p_creator_id text)
+CREATE OR REPLACE FUNCTION anonymize_inactive_users(p_days_inactive integer DEFAULT 30)
 RETURNS TABLE (
-    total_comments bigint,
-    total_points bigint,
-    total_exp bigint
+    profiles_anonymized integer,
+    challenges_updated integer,
+    attempts_updated integer
 )
 LANGUAGE plpgsql
 SET search_path = public
-AS $$
+AS $
+DECLARE
+    v_cutoff_date timestamp;
+    v_profiles_count integer := 0;
+    v_challenges_count integer := 0;
+    v_attempts_count integer := 0;
+    v_user record;
+    v_new_user_id text;
 BEGIN
-    RETURN QUERY
-    SELECT 
-        COUNT(*)::bigint AS total_comments,
-        COALESCE(SUM(points_awarded), 0)::bigint AS total_points,
-        COALESCE(SUM(experience_awarded), 0)::bigint AS total_exp
-    FROM comment_rewards
-    WHERE creator_id = p_creator_id;
+    -- Calculate the cutoff date
+    v_cutoff_date := now() - (p_days_inactive || ' days')::interval;
+    
+    -- Process each inactive user that hasn't been anonymized yet
+    FOR v_user IN
+        SELECT id, user_id
+        FROM user_profiles
+        WHERE updated_at < v_cutoff_date
+          AND user_id NOT LIKE '[deleted]%'
+    LOOP
+        -- Generate new anonymized user_id
+        v_new_user_id := '[deleted]:' || gen_random_uuid()::text;
+        
+        -- Update the user profile
+        UPDATE user_profiles
+        SET 
+            user_id = v_new_user_id,
+            username = '[deleted]',
+            updated_at = now()
+        WHERE id = v_user.id;
+        
+        v_profiles_count := v_profiles_count + 1;
+        
+        -- Count challenges created by this user before updating
+        v_challenges_count := v_challenges_count + (
+            SELECT COUNT(*)::integer 
+            FROM challenges 
+            WHERE creator_id = v_user.user_id
+        );
+        
+        -- Update challenges created by this user (set creator_username and creator_id)
+        UPDATE challenges
+        SET 
+            creator_username = '[deleted]',
+            creator_id = v_new_user_id
+        WHERE creator_id = v_user.user_id;
+        
+        -- Update user_id reference in challenge_attempts to new anonymized ID
+        UPDATE challenge_attempts
+        SET user_id = v_new_user_id
+        WHERE user_id = v_user.user_id;
+    END LOOP;
+    
+    -- Return the counts
+    profiles_anonymized := v_profiles_count;
+    challenges_updated := v_challenges_count;
+    attempts_updated := v_attempts_count;
+    
+    RETURN NEXT;
 END;
-$$;
+$;
 
-COMMENT ON FUNCTION get_creator_comment_stats IS 'Efficiently aggregates comment reward statistics for a creator';
+COMMENT ON FUNCTION anonymize_inactive_users IS 'Anonymizes user profiles inactive for specified days, replacing identifiable info with [deleted] markers';
 
 -- ============================================================================
 -- GRANTS AND PERMISSIONS
@@ -605,7 +542,8 @@ COMMENT ON FUNCTION get_creator_comment_stats IS 'Efficiently aggregates comment
 DO $$
 BEGIN
     RAISE NOTICE 'Schema creation completed successfully!';
-    RAISE NOTICE 'Tables created: user_profiles, challenges, challenge_attempts, attempt_guesses, comment_rewards';
-    RAISE NOTICE 'Indexes created: 11 indexes for query optimization';
-    RAISE NOTICE 'Functions created: 6 stored procedures for atomic operations';
+    RAISE NOTICE 'Tables created: user_profiles, challenges, challenge_attempts, attempt_guesses';
+    RAISE NOTICE 'Indexes created: 8 indexes for query optimization';
+    RAISE NOTICE 'Functions created: 5 stored procedures for atomic operations';
 END $$;
+

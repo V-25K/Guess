@@ -33,7 +33,7 @@ export function Toast({ message, type = 'info', duration = 3000, onClose }: Toas
   }[type];
 
   return (
-    <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+    <div className="animate-slide-up pointer-events-auto">
       <div className={`${bgColor} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 min-w-[200px] max-w-[90vw]`}>
         {type === 'success' && <span>✓</span>}
         {type === 'error' && <span>✕</span>}
@@ -60,14 +60,18 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ToastContext.Provider value={{ showToast }}>
-      {children}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+      <div className="relative w-full h-full">
+        {children}
+        {toast && (
+          <div className="absolute bottom-20 left-0 right-0 z-50 flex justify-center pointer-events-none">
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              onClose={() => setToast(null)}
+            />
+          </div>
+        )}
+      </div>
     </ToastContext.Provider>
   );
 }

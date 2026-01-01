@@ -6,6 +6,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { App } from '../App';
+import { ToastProvider } from '../components/shared/Toast';
 import '../base.css';
 
 // Set initial view before app renders
@@ -19,6 +20,8 @@ if (!root) {
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>
-    <App />
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   </React.StrictMode>
 );

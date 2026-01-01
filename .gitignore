@@ -20,6 +20,7 @@ src/**/*.d.ts.map
 .env
 .env.local
 .env.*.local
+.env.*
 
 # IDE
 .vscode/
@@ -32,6 +33,7 @@ src/**/*.d.ts.map
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Devvit
 .devvit/
@@ -54,3 +56,25 @@ coverage/
 # Generated/temporary analysis files
 refactor-summary.json
 *-summary.json
+
+# Local development
+*.local
+
+# Coverage reports (generated, not source)
+*.lcov
+
+# Editor backup files
+*.bak
+*.backup
+
+# Debug logs
+debug.log
+*.debug
+
+# OS-specific
+ehthumbs.db
+ehthumbs_vista.db
+
+# Package manager locks (optional - uncomment if you want to ignore)
+# package-lock.json
+# yarn.lock

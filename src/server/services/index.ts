@@ -8,7 +8,6 @@ export * from './cache.service.js';
 export * from './user.service.js';
 export * from './challenge.service.js';
 export * from './attempt.service.js';
-export * from './comment.service.js';
 export * from './leaderboard.service.js';
 
 export * from './answer-set-generator.service.js';
@@ -25,3 +24,6 @@ export * from './data-loader.service.js';
 
 // User services (refactored into focused services)
 export * from './user/index.js';
+
+// Data compliance services
+export * from './data-cleanup.service.js';

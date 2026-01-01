@@ -1,4 +1,4 @@
-# Guess The Link
+# Linkaroo
 
 A Reddit game where players guess the common link between images. Built on Devvit with AI-powered answer validation.
 
@@ -79,6 +79,29 @@ Rate limit: 1 challenge per 24 hours
 ## Leaderboard
 
 Players ranked by total points. Shows top 10 globally plus your current rank.
+
+## Fetch Domains
+
+This app requests the following external domains:
+
+### generativelanguage.googleapis.com
+- **Purpose:** Google Gemini AI for generating acceptable answer variations during challenge creation
+- **Data Sent:** Challenge correct answers, image descriptions, answer explanations (creator-provided content only)
+- **Data NOT Sent:** Player guesses, usernames, user IDs, or any personal information
+- **When Used:** Once per challenge at creation time only
+- **Compliance:** Approved LLM provider per Devvit Rules
+
+### jqgithkiinvgcpskwado.supabase.co
+- **Purpose:** PostgreSQL database for persistent game data storage
+- **Data Sent:** User profiles (Reddit ID, username, avatar URL), challenges, attempts, guesses
+- **Data Retention:** User data auto-anonymized after 30 days of inactivity
+- **Compliance:** Approved cloud provider (Supabase) per Devvit HTTP Fetch Policy
+
+## Legal
+
+- [Terms of Service](TERMS_OF_SERVICE.md)
+- [Privacy Policy](PRIVACY_POLICY.md)
+- [Compliance Audit](docs/COMPLIANCE_AUDIT.md)
 
 ## Architecture
 

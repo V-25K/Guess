@@ -79,7 +79,7 @@
     }
   },
   "triggers": {
-    "onCommentSubmit": "/internal/triggers/comment-submit"
+    "onPostDelete": "/internal/triggers/post-delete"
   },
   "menu": {
     "items": [
@@ -89,6 +89,13 @@
         "location": "subreddit",
         "forUserType": "moderator",
         "endpoint": "/internal/menu/create-test-post"
+      },
+      {
+        "label": "Cleanup User Data",
+        "description": "Manually trigger cleanup of inactive user data for compliance",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/admin/cleanup-user"
       },
       {
         "label": "Open Profile",
@@ -121,6 +128,10 @@
       "leaderboard-refresh": {
         "endpoint": "/internal/scheduler/leaderboard-refresh",
         "cron": "*/10 * * * *"
+      },
+      "user-data-cleanup": {
+        "endpoint": "/internal/scheduler/user-data-cleanup",
+        "cron": "0 3 * * *"
       }
     }
   }

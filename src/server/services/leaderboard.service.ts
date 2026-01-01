@@ -58,11 +58,19 @@ export class LeaderboardService extends BaseService {
   /**
    * Add or update a user's score in the leaderboard sorted set
    * Uses zAdd for storing scores with key 'leaderboard:points'
+   * Skips moderators - they don't appear on leaderboard
    * Requirements: 9.1
    */
   async updateScore(userId: string, points: number): Promise<Result<void, AppError>> {
     return tryCatch(
       async () => {
+        // Check if user is a moderator - skip leaderboard update for mods
+        const userProfileResult = await this.userRepo.findById(userId);
+        if (isOk(userProfileResult) && userProfileResult.value?.role === 'mod') {
+          this.logInfo('LeaderboardService', `Skipping leaderboard update for moderator ${userId}`);
+          return;
+        }
+
         await redis.zAdd(LEADERBOARD_KEY, { member: userId, score: points });
         this.logInfo('LeaderboardService', `Updated score for user ${userId}: ${points}`);
       },
@@ -76,11 +84,19 @@ export class LeaderboardService extends BaseService {
   /**
    * Increment a user's score atomically using zIncrBy
    * Prevents race conditions with read-modify-write
+   * Skips moderators - they don't appear on leaderboard
    * Requirements: 9.4
    */
   async incrementScore(userId: string, delta: number): Promise<Result<number, AppError>> {
     return tryCatch(
       async () => {
+        // Check if user is a moderator - skip leaderboard update for mods
+        const userProfileResult = await this.userRepo.findById(userId);
+        if (isOk(userProfileResult) && userProfileResult.value?.role === 'mod') {
+          this.logInfo('LeaderboardService', `Skipping leaderboard increment for moderator ${userId}`);
+          return userProfileResult.value.total_points; // Return current points without updating leaderboard
+        }
+
         const newScore = await redis.zIncrBy(LEADERBOARD_KEY, userId, delta);
         this.logInfo('LeaderboardService', `Incremented score for user ${userId} by ${delta}, new score: ${newScore}`);
         return newScore;
@@ -190,13 +206,16 @@ export class LeaderboardService extends BaseService {
    * Get top players from Redis sorted set
    * Uses zRange with { by: 'rank', reverse: true } for descending order
    * Implements standard competition ranking (1224) - ties share rank, next rank skips
+   * Excludes moderators from the leaderboard
    */
   private async getTopPlayersFromRedis(limit: number, offset: number): Promise<Result<LeaderboardEntry[], AppError>> {
     return tryCatch(
       async () => {
-        // Get top players from sorted set in descending order (highest scores first)
-        const start = offset;
-        const end = offset + limit - 1;
+        // Fetch more entries than needed to account for filtered mods
+        // We'll filter and then trim to the requested limit
+        const fetchLimit = limit * 2 + 20; // Fetch extra to handle mod filtering
+        const start = 0; // Always start from beginning to properly filter
+        const end = offset + fetchLimit - 1;
 
         const members = await redis.zRange(LEADERBOARD_KEY, start, end, {
           by: 'rank',
@@ -207,28 +226,34 @@ export class LeaderboardService extends BaseService {
           return [];
         }
 
-        // Fetch user details for each member
-        const entries: LeaderboardEntry[] = [];
+        // Fetch user details for each member and filter out mods
+        const allEntries: LeaderboardEntry[] = [];
+        let playerRank = 0; // Track rank among non-mod players only
+
         for (let i = 0; i < members.length; i++) {
           const member = members[i];
-          const userId = member.member;
+          const memberId = member.member;
           const score = member.score;
 
           // Get user profile for additional details
-          const userProfileResult = await this.userRepo.findById(userId);
+          const userProfileResult = await this.userRepo.findById(memberId);
           if (!isOk(userProfileResult)) {
             continue; // Skip this user if profile fetch fails
           }
 
           const userProfile = userProfileResult.value;
           if (userProfile) {
-            // Calculate proper rank using standard competition ranking
-            // Count how many players have a higher score than this player
-            const rankResult = await this.getCompetitionRank(score);
-            const rank = isOk(rankResult) ? rankResult.value : 1;
+            // Skip moderators - they don't appear on leaderboard
+            if (userProfile.role === 'mod') {
+              continue;
+            }
 
-            entries.push({
-              rank: rank,
+            playerRank++;
+
+            // Use sequential rank based on position in sorted list
+            // This is correct for competition ranking when iterating in descending score order
+            allEntries.push({
+              rank: playerRank,
               userId: userProfile.user_id,
               username: userProfile.username,
               totalPoints: score,
@@ -239,9 +264,52 @@ export class LeaderboardService extends BaseService {
           }
         }
 
-        return entries;
+        // Apply offset and limit to the filtered results
+        // Adjust ranks for the offset
+        const paginatedEntries = allEntries.slice(offset, offset + limit);
+        
+        return paginatedEntries;
       },
       (error) => databaseError('getTopPlayersFromRedis', String(error))
+    );
+  }
+
+  /**
+   * Get competition rank for a given score, excluding moderators
+   * Standard competition ranking: rank = 1 + count of non-mod players with higher score
+   * Players with same score share the same rank
+   */
+  private async getCompetitionRankExcludingMods(score: number): Promise<Result<number, AppError>> {
+    return tryCatch(
+      async () => {
+        // Use zRange with by: 'score' to get players with scores strictly greater than this score
+        const playersWithHigherScore = await redis.zRange(
+          LEADERBOARD_KEY,
+          score + 0.001, // Exclusive: scores strictly greater than this
+          '+inf',
+          { by: 'score' }
+        );
+
+        if (!playersWithHigherScore || playersWithHigherScore.length === 0) {
+          return 1;
+        }
+
+        // Count only non-mod players with higher scores
+        let nonModCount = 0;
+        for (const member of playersWithHigherScore) {
+          const userProfileResult = await this.userRepo.findById(member.member);
+          if (isOk(userProfileResult) && userProfileResult.value && userProfileResult.value.role !== 'mod') {
+            nonModCount++;
+          }
+        }
+
+        // Rank = 1 + number of non-mod players with higher score
+        return nonModCount + 1;
+      },
+      (error) => {
+        this.logError('LeaderboardService.getCompetitionRankExcludingMods', error);
+        return databaseError('getCompetitionRankExcludingMods', String(error));
+      }
     );
   }
 
@@ -276,15 +344,17 @@ export class LeaderboardService extends BaseService {
    * Fallback: Get top players from database
    * Used when Redis is unavailable (Requirements: 7.1)
    * Implements standard competition ranking (1224) - ties share rank
+   * Excludes moderators from the leaderboard
    */
   private async getTopPlayersFromDatabaseInternal(limit: number, offset: number): Promise<LeaderboardEntry[]> {
+    // findByPoints already filters out mods
     const usersResult = await this.userRepo.findByPoints(limit, offset);
     if (!isOk(usersResult)) {
       throw new Error(`Failed to get users: ${JSON.stringify(usersResult.error)}`);
     }
     const users = usersResult.value;
 
-    // Get all users to calculate proper competition ranks
+    // Get all non-mod users to calculate proper competition ranks
     const allUsersResult = await this.userRepo.findByPoints(1000, 0);
     if (!isOk(allUsersResult)) {
       throw new Error(`Failed to get all users: ${JSON.stringify(allUsersResult.error)}`);
@@ -292,7 +362,7 @@ export class LeaderboardService extends BaseService {
     const allUsers = allUsersResult.value;
 
     return users.map((user) => {
-      // Count players with higher points for competition ranking
+      // Count non-mod players with higher points for competition ranking
       const playersWithHigherScore = allUsers.filter(u => u.total_points > user.total_points).length;
       const rank = playersWithHigherScore + 1;
 
@@ -381,6 +451,7 @@ export class LeaderboardService extends BaseService {
   /**
    * Sync a user's score from database to Redis sorted set
    * Useful for initial population or recovery
+   * Skips moderators - they don't appear on leaderboard
    */
   async syncUserScore(userId: string): Promise<Result<void, AppError>> {
     return tryCatch(
@@ -392,6 +463,12 @@ export class LeaderboardService extends BaseService {
 
         const userProfile = userProfileResult.value;
         if (userProfile) {
+          // Skip moderators - they don't appear on leaderboard
+          if (userProfile.role === 'mod') {
+            this.logInfo('LeaderboardService', `Skipping leaderboard sync for moderator ${userId}`);
+            return;
+          }
+
           const updateResult = await this.updateScore(userId, userProfile.total_points);
           if (!isOk(updateResult)) {
             throw new Error(`Failed to update score: ${JSON.stringify(updateResult.error)}`);
@@ -408,20 +485,21 @@ export class LeaderboardService extends BaseService {
   /**
    * Refresh the leaderboard by syncing from database
    * Call this to populate Redis sorted set from database
+   * Only includes non-moderator players
    */
   async refreshLeaderboard(): Promise<Result<void, AppError>> {
     return tryCatch(
       async () => {
         this.logInfo('LeaderboardService', 'Refreshing leaderboard from database');
 
-        // Get all users with points from database
+        // Get all non-mod users with points from database (findByPoints already filters mods)
         const usersResult = await this.userRepo.findByPoints(1000, 0);
         if (!isOk(usersResult)) {
           throw new Error(`Failed to get users: ${JSON.stringify(usersResult.error)}`);
         }
         const users = usersResult.value;
 
-        // Add each user to the sorted set
+        // Add each non-mod user to the sorted set
         for (const user of users) {
           await redis.zAdd(LEADERBOARD_KEY, {
             member: user.user_id,
@@ -429,7 +507,7 @@ export class LeaderboardService extends BaseService {
           });
         }
 
-        this.logInfo('LeaderboardService', `Leaderboard refreshed with ${users.length} users`);
+        this.logInfo('LeaderboardService', `Leaderboard refreshed with ${users.length} players (mods excluded)`);
       },
       (error) => {
         this.logError('LeaderboardService.refreshLeaderboard', error);
@@ -552,6 +630,7 @@ export class LeaderboardService extends BaseService {
         }));
 
         // Get user's rank data (always fetch for Your Rank Section)
+        // Moderators won't have a rank but can still view the leaderboard
         let userRank: UserRankData | null = null;
         const userProfileResult = await this.userRepo.findById(userId);
         const rankResult = await this.getUserRank(userId);
@@ -561,8 +640,9 @@ export class LeaderboardService extends BaseService {
           const rank = isOk(rankResult) ? rankResult.value : null;
 
           if (userProfile) {
+            // Moderators get null rank (they're excluded from leaderboard)
             userRank = {
-              rank: rank,
+              rank: userProfile.role === 'mod' ? null : rank,
               username: userProfile.username,
               totalPoints: userProfile.total_points,
               level: userProfile.level,

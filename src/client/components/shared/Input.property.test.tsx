@@ -39,8 +39,8 @@ describe('Input Property Tests', () => {
           expect(errorElement).toBeInTheDocument();
           expect(errorElement.textContent).toContain(errorMessage);
           
-          // Input container must have error styling (border-error class in Tailwind)
-          const inputContainer = container.querySelector('.border-error');
+          // Input container must have error styling (border-red-500 class in Tailwind)
+          const inputContainer = container.querySelector('.border-red-500');
           expect(inputContainer).not.toBeNull();
           
           // Input must have aria-invalid attribute
@@ -129,8 +129,8 @@ describe('Input Property Tests', () => {
           
           const { container } = render(<Input error={errorValue ?? undefined} />);
           
-          // No error styling on container (no border-error class)
-          const containerWithError = container.querySelector('.border-error');
+          // No error styling on container (no border-red-500 class)
+          const containerWithError = container.querySelector('.border-red-500');
           expect(containerWithError).toBeNull();
           
           // No aria-invalid attribute

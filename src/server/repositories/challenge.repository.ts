@@ -161,4 +161,36 @@ export class ChallengeRepository extends BaseRepository {
       (error) => databaseError('incrementPlayersCompleted', String(error))
     );
   }
+
+  /**
+   * Delete all challenges created by a user
+   * @param creatorId - Reddit user ID (t2_* format)
+   * @returns Result<number, AppError> with count of deleted records
+   */
+  async deleteByCreatorId(creatorId: string): Promise<Result<number, AppError>> {
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        const url = `${config.url}/rest/v1/${this.TABLE}?creator_id=eq.${creatorId}`;
+        
+        const response = await fetch(url, {
+          method: 'DELETE',
+          headers: {
+            'apikey': config.anonKey,
+            'Authorization': `Bearer ${config.anonKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const deleted = await response.json();
+        return deleted?.length || 0;
+      },
+      (error) => databaseError('deleteByCreatorId', String(error))
+    );
+  }
 }

@@ -11,7 +11,6 @@
 import type { Context } from '@devvit/server/server-context';
 import { redis } from '@devvit/web/server';
 import { BaseService } from './base.service.js';
-import { createLogger, type Logger } from '../utils/logger.js';
 import { metrics } from '../utils/metrics.js';
 import type { Result } from '../../shared/utils/result.js';
 import { ok, err } from '../../shared/utils/result.js';
@@ -71,14 +70,12 @@ const CHALLENGES_CACHE_KEY = 'cache:challenges:recent';
  * Proactively populates caches to improve performance
  */
 export class CacheWarmingService extends BaseService {
-  private logger: Logger;
   private config: CacheWarmingConfig;
   private supabaseUrl: string | null = null;
   private supabaseKey: string | null = null;
 
   constructor(context: Context, config?: Partial<CacheWarmingConfig>) {
     super(context);
-    this.logger = createLogger({ service: 'CacheWarmingService' });
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
@@ -96,7 +93,6 @@ export class CacheWarmingService extends BaseService {
    */
   async warmAll(): Promise<Result<WarmingStatus, AppError>> {
     if (!this.config.enabled) {
-      this.logger.info('Cache warming is disabled');
       return ok({
         lastRun: null,
         results: [],
@@ -108,12 +104,10 @@ export class CacheWarmingService extends BaseService {
     // Try to acquire lock
     const lockAcquired = await this.acquireLock();
     if (!lockAcquired) {
-      this.logger.warn('Cache warming already in progress');
       return err(internalError('Cache warming already in progress'));
     }
 
     const startTime = Date.now();
-    this.logger.info('Starting cache warming');
 
     try {
       const results: WarmingResult[] = [];
@@ -143,14 +137,8 @@ export class CacheWarmingService extends BaseService {
       await metrics.recordHistogram('cache_warming_duration_ms', totalDurationMs);
       await metrics.setGauge('cache_warming_items', totalItemsWarmed);
 
-      this.logger.info('Cache warming completed', {
-        totalItemsWarmed,
-        totalDurationMs,
-      });
-
       return ok(status);
     } catch (error) {
-      this.logger.error('Cache warming failed', error);
       return err(internalError('Cache warming failed', error));
     } finally {
       // Release lock
@@ -210,10 +198,6 @@ export class CacheWarmingService extends BaseService {
       });
 
       const durationMs = Date.now() - startTime;
-      this.logger.info('Leaderboard cache warmed', {
-        itemsWarmed: users.length,
-        durationMs,
-      });
 
       return {
         category,
@@ -223,7 +207,6 @@ export class CacheWarmingService extends BaseService {
       };
     } catch (error) {
       const durationMs = Date.now() - startTime;
-      this.logger.error('Failed to warm leaderboard cache', error);
 
       return {
         category,
@@ -286,10 +269,6 @@ export class CacheWarmingService extends BaseService {
       }
 
       const durationMs = Date.now() - startTime;
-      this.logger.info('Challenges cache warmed', {
-        itemsWarmed: challenges.length,
-        durationMs,
-      });
 
       return {
         category,
@@ -299,7 +278,6 @@ export class CacheWarmingService extends BaseService {
       };
     } catch (error) {
       const durationMs = Date.now() - startTime;
-      this.logger.error('Failed to warm challenges cache', error);
 
       return {
         category,
@@ -318,8 +296,7 @@ export class CacheWarmingService extends BaseService {
     try {
       const status = await redis.get(WARMING_STATUS_KEY);
       return status ? JSON.parse(status) : null;
-    } catch (error) {
-      this.logger.error('Failed to get warming status', error);
+    } catch {
       return null;
     }
   }
@@ -332,8 +309,8 @@ export class CacheWarmingService extends BaseService {
       await redis.set(WARMING_STATUS_KEY, JSON.stringify(status), {
         expiration: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
       });
-    } catch (error) {
-      this.logger.error('Failed to save warming status', error);
+    } catch {
+      // Silently fail - status saving is not critical
     }
   }
 
@@ -362,8 +339,7 @@ export class CacheWarmingService extends BaseService {
       });
 
       return true;
-    } catch (error) {
-      this.logger.error('Failed to acquire warming lock', error);
+    } catch {
       return false;
     }
   }
@@ -374,8 +350,8 @@ export class CacheWarmingService extends BaseService {
   private async releaseLock(): Promise<void> {
     try {
       await redis.del(WARMING_LOCK_KEY);
-    } catch (error) {
-      this.logger.error('Failed to release warming lock', error);
+    } catch {
+      // Silently fail - lock will expire anyway
     }
   }
 

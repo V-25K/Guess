@@ -460,7 +460,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: '550e8400-e29b-41d4-a716-446655440000',
           guess: 'Paris',
-          userId: 'user123',
         },
       };
       
@@ -472,7 +471,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: '550e8400-e29b-41d4-a716-446655440000',
           guess: 'a'.repeat(200),
-          userId: 'user123',
         },
       };
       
@@ -484,7 +482,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: '550e8400-e29b-41d4-a716-446655440000',
           guess: 'a',
-          userId: 'user123',
         },
       };
       
@@ -496,7 +493,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: '550e8400-e29b-41d4-a716-446655440000',
           guess: '  Paris  ',
-          userId: 'user123',
         },
       };
       
@@ -516,23 +512,6 @@ describe('submitGuessSchema', () => {
           body: {
             challengeId: uuid,
             guess: 'Test Guess',
-            userId: 'user123',
-          },
-        };
-        
-        expect(() => submitGuessSchema.parse(data)).not.toThrow();
-      });
-    });
-
-    it('should accept various valid user IDs', () => {
-      const validUserIds = ['user123', 't2_abc123', 'a', 'a'.repeat(100)];
-      
-      validUserIds.forEach(userId => {
-        const data = {
-          body: {
-            challengeId: '550e8400-e29b-41d4-a716-446655440000',
-            guess: 'Test Guess',
-            userId,
           },
         };
         
@@ -547,7 +526,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: 'not-a-uuid',
           guess: 'Paris',
-          userId: 'user123',
         },
       };
       
@@ -559,7 +537,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: '550e8400-e29b-41d4-a716',
           guess: 'Paris',
-          userId: 'user123',
         },
       };
       
@@ -571,7 +548,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: '550e8400e29b41d4a716446655440000',
           guess: 'Paris',
-          userId: 'user123',
         },
       };
       
@@ -583,7 +559,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: '550e8400-e29b-41d4-a716-446655440000',
           guess: '',
-          userId: 'user123',
         },
       };
       
@@ -595,31 +570,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: '550e8400-e29b-41d4-a716-446655440000',
           guess: 'a'.repeat(201),
-          userId: 'user123',
-        },
-      };
-      
-      expect(() => submitGuessSchema.parse(data)).toThrow(ZodError);
-    });
-
-    it('should reject empty userId', () => {
-      const data = {
-        body: {
-          challengeId: '550e8400-e29b-41d4-a716-446655440000',
-          guess: 'Paris',
-          userId: '',
-        },
-      };
-      
-      expect(() => submitGuessSchema.parse(data)).toThrow(ZodError);
-    });
-
-    it('should reject userId over 100 characters', () => {
-      const data = {
-        body: {
-          challengeId: '550e8400-e29b-41d4-a716-446655440000',
-          guess: 'Paris',
-          userId: 'a'.repeat(101),
         },
       };
       
@@ -631,7 +581,6 @@ describe('submitGuessSchema', () => {
         body: {
           challengeId: '550e8400-e29b-41d4-a716-446655440000',
           guess: 123,
-          userId: 'user123',
         },
       };
       
@@ -642,7 +591,6 @@ describe('submitGuessSchema', () => {
       const data = {
         body: {
           guess: 'Paris',
-          userId: 'user123',
         },
       };
       
@@ -653,18 +601,6 @@ describe('submitGuessSchema', () => {
       const data = {
         body: {
           challengeId: '550e8400-e29b-41d4-a716-446655440000',
-          userId: 'user123',
-        },
-      };
-      
-      expect(() => submitGuessSchema.parse(data)).toThrow(ZodError);
-    });
-
-    it('should reject missing userId', () => {
-      const data = {
-        body: {
-          challengeId: '550e8400-e29b-41d4-a716-446655440000',
-          guess: 'Paris',
         },
       };
       

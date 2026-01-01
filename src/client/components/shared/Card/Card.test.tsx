@@ -17,21 +17,21 @@ describe('Card Component', () => {
   it('applies default variant styling', () => {
     const { container } = render(<Card>Content</Card>);
     const card = container.firstChild;
-    expect(card).toHaveClass('bg-game-card');
+    expect(card).toHaveClass('bg-white');
     expect(card).toHaveClass('shadow-sm');
   });
 
   it('applies elevated variant styling', () => {
     const { container } = render(<Card variant="elevated">Content</Card>);
     const card = container.firstChild;
-    expect(card).toHaveClass('bg-game-card');
-    expect(card).toHaveClass('shadow-game-card');
+    expect(card).toHaveClass('bg-white');
+    expect(card).toHaveClass('shadow-md');
   });
 
   it('applies outlined variant styling', () => {
     const { container } = render(<Card variant="outlined">Content</Card>);
     const card = container.firstChild;
-    expect(card).toHaveClass('bg-game-card');
+    expect(card).toHaveClass('bg-white');
     expect(card).toHaveClass('border');
     expect(card).toHaveClass('border-neutral-200');
   });
@@ -69,7 +69,7 @@ describe('Card Component', () => {
       </Card>
     );
     const card = container.firstChild;
-    expect(card).toHaveClass('shadow-game-card');
+    expect(card).toHaveClass('shadow-md');
     expect(card).toHaveClass('p-6');
   });
 

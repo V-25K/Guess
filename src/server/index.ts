@@ -12,10 +12,12 @@ import { userRoutes } from './routes/user.routes.js';
 import { challengeRoutes } from './routes/challenge.routes.js';
 import { attemptRoutes } from './routes/attempt.routes.js';
 import { leaderboardRoutes } from './routes/leaderboard.routes.js';
-import { commentTriggerRoutes } from './triggers/comment-submit.js';
+import { postDeleteRoutes } from './triggers/post-delete.js';
+import { accountDeleteRoutes } from './triggers/account-delete.js';
 import { menuRoutes } from './routes/menu.routes.js';
 import { healthRoutes } from './routes/health.routes.js';
 import { schedulerRoutes } from './routes/scheduler.routes.js';
+import { adminRoutes } from './routes/admin.routes.js';
 import { securityHeaders } from './middleware/security-headers.js';
 import { metricsMiddleware } from './utils/metrics.js';
 import { createLogger } from './utils/logger.js';
@@ -65,13 +67,17 @@ app.use('/api/user', userRoutes);
 app.use('/internal/menu', menuRoutes);
 
 // Trigger Handlers
-app.use('/internal/triggers/comment-submit', commentTriggerRoutes);
+app.use('/internal/triggers/post-delete', postDeleteRoutes);
+app.use('/internal/triggers/account-delete', accountDeleteRoutes);
 
 // Health check routes (comprehensive health monitoring)
 app.use('/api/health', healthRoutes);
 
 // Scheduler routes (for Devvit scheduled tasks)
 app.use('/internal/scheduler', schedulerRoutes);
+
+// Admin routes (for moderator actions)
+app.use('/internal/admin', adminRoutes);
 
 // Root endpoint for debugging
 app.get('/', (_req: Request, res: Response) => {

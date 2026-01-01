@@ -10,7 +10,6 @@ export const REWARDS = {
   SOLVE_MULTIPLE_IMAGES: { points: 25, exp: 25 } as Reward,
   SOLVE_FAILED: { points: 0, exp: 0 } as Reward,
   CREATE_CHALLENGE: { points: 5, exp: 5 } as Reward,
-  COMMENT_ON_CHALLENGE: { points: 1, exp: 1 } as Reward,
 } as const;
 
 export const LEVEL_PROGRESSION = {

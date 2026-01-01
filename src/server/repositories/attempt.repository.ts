@@ -179,4 +179,36 @@ export class AttemptRepository extends BaseRepository {
     });
   }
 
+  /**
+   * Delete all challenge attempts by user ID
+   * @param userId - Reddit user ID (t2_* format)
+   * @returns Result<number, AppError> with count of deleted records
+   */
+  async deleteByUserId(userId: string): Promise<Result<number, AppError>> {
+    return tryCatch(
+      async () => {
+        const config = await this.getSupabaseConfig();
+        const url = `${config.url}/rest/v1/${this.TABLE}?user_id=eq.${userId}`;
+        
+        const response = await fetch(url, {
+          method: 'DELETE',
+          headers: {
+            'apikey': config.anonKey,
+            'Authorization': `Bearer ${config.anonKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const deleted = await response.json();
+        return deleted?.length || 0;
+      },
+      (error) => databaseError('deleteByUserId', String(error))
+    );
+  }
+
 }

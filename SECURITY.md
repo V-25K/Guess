@@ -1,6 +1,6 @@
 # Security
 
-This document outlines the security measures implemented in the Guess The Link application.
+This document outlines the security measures implemented in the Linkaroo application.
 
 ## Security Headers
 

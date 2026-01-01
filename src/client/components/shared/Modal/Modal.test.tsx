@@ -65,7 +65,8 @@ describe('Modal Component', () => {
         </Modal>
       );
       const dialog = container.querySelector('[role="dialog"]');
-      expect(dialog).toHaveClass('max-w-md');
+      // Modal uses inline styles for sizing, not Tailwind classes
+      expect(dialog).toHaveStyle({ maxWidth: '380px' });
     });
 
     it('applies sm size', () => {
@@ -75,7 +76,8 @@ describe('Modal Component', () => {
         </Modal>
       );
       const dialog = container.querySelector('[role="dialog"]');
-      expect(dialog).toHaveClass('max-w-xs');
+      // Modal uses inline styles for sizing, not Tailwind classes
+      expect(dialog).toHaveStyle({ maxWidth: '280px' });
     });
 
     it('applies lg size', () => {
@@ -85,7 +87,8 @@ describe('Modal Component', () => {
         </Modal>
       );
       const dialog = container.querySelector('[role="dialog"]');
-      expect(dialog).toHaveClass('max-w-xl');
+      // Modal uses inline styles for sizing, not Tailwind classes
+      expect(dialog).toHaveStyle({ maxWidth: '480px' });
     });
   });
 

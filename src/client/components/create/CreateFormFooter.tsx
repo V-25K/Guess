@@ -17,7 +17,7 @@ export const CreateFormFooter: React.FC<CreateFormFooterProps> = ({
   isSubmitting,
 }) => {
   return (
-    <div className="p-4 bg-white dark:bg-[#1a2332] border-t border-neutral-200 dark:border-white/[0.08] flex gap-3 fixed bottom-[60px] left-0 right-0 z-10 pb-[max(16px,env(safe-area-inset-bottom))]">
+    <div className="p-4 bg-white dark:bg-[#1a2332] border-t border-neutral-200 dark:border-white/[0.08] flex gap-3 shrink-0 mb-[60px]">
       <button
         className="flex-1 bg-transparent text-neutral-700 dark:text-white/70 border border-neutral-200 dark:border-white/[0.12] rounded-full py-3 font-semibold text-[15px] cursor-pointer flex items-center justify-center min-h-touch hover:bg-neutral-50 dark:hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-game-primary dark:focus:ring-[#f0d078] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         onClick={onCancel}

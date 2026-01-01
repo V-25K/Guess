@@ -34,6 +34,10 @@ export const TTL = {
   USER_PROFILE: 5 * 60 * 1000,
   /** TTL for avatar URLs (24 hours) */
   AVATAR: 24 * 60 * 60 * 1000,
+  /** 30-day retention for compliance (in milliseconds) - Requirements 1.1 */
+  USER_DATA_RETENTION: 30 * 24 * 60 * 60 * 1000,
+  /** 30-day retention in seconds (for Redis expire command) - Requirements 1.2 */
+  USER_DATA_RETENTION_SECONDS: 30 * 24 * 60 * 60,
 } as const;
 
 /**
@@ -66,6 +70,19 @@ export function validateDynamicTTL(ttl: number): boolean {
  */
 export function isValidDynamicTTL(ttl: number): boolean {
   return ttl >= TTL.MIN_DYNAMIC && ttl <= TTL.MAX_DYNAMIC;
+}
+
+/**
+ * Caps a TTL value to the maximum user data retention period for compliance.
+ * Ensures no user data persists beyond 30 days.
+ * 
+ * @param requestedTTL - Requested TTL value in milliseconds
+ * @returns The effective TTL: min(requestedTTL, USER_DATA_RETENTION)
+ * 
+ * Requirements: 1.3, 1.4, 2.1
+ */
+export function capUserDataTTL(requestedTTL: number): number {
+  return Math.min(requestedTTL, TTL.USER_DATA_RETENTION);
 }
 
 /**
@@ -206,14 +223,18 @@ export class CacheService extends BaseService {
   }
 
   /**
-   * Set user-specific data in Redis cache
+   * Set user-specific data in Redis cache with compliance TTL cap
+   * 
+   * The TTL is automatically capped at USER_DATA_RETENTION (30 days) to ensure
+   * compliance with data retention policies. If a TTL longer than 30 days is
+   * requested, it will be reduced to 30 days.
    * 
    * @param userId - User ID
    * @param key - Data key (e.g., 'profile')
    * @param data - Data to cache
-   * @param ttl - Time to live in milliseconds (default: 5 minutes for profile data)
+   * @param ttl - Time to live in milliseconds (default: 5 minutes for profile data, capped at 30 days)
    * 
-   * Requirements: 4.4
+   * Requirements: 2.1, 2.2, 4.4
    */
   async setUserData<T>(
     userId: string,
@@ -225,12 +246,35 @@ export class CacheService extends BaseService {
       const cacheKey = CacheKeyBuilder.createKey('user', userId, key);
       const serialized = JSON.stringify(data);
       
+      // Apply compliance TTL cap - ensures no user data persists beyond 30 days
+      const effectiveTTL = capUserDataTTL(ttl);
+      
       await redis.set(cacheKey, serialized, {
-        expiration: new Date(Date.now() + ttl),
+        expiration: new Date(Date.now() + effectiveTTL),
       });
     } catch (error) {
       this.logError('CacheService.setUserData', error);
-      // Don't throw - cache failures should not crash the application
+      // Don't throw - cache failures should not crash the application (Requirement 2.4)
+    }
+  }
+
+  /**
+   * Set TTL on user-identifiable Redis keys for compliance
+   * 
+   * This helper method explicitly sets the 30-day retention TTL on any Redis key
+   * containing user data. Use this to ensure compliance when working with
+   * user-identifiable data outside the normal setUserData flow.
+   * 
+   * @param key - Redis key containing user data
+   * 
+   * Requirements: 2.3
+   */
+  async setUserDataRetentionTTL(key: string): Promise<void> {
+    try {
+      await redis.expire(key, TTL.USER_DATA_RETENTION_SECONDS);
+    } catch (error) {
+      this.logError('CacheService.setUserDataRetentionTTL', error);
+      // Don't throw - cache failures should not crash the application (Requirement 2.4)
     }
   }
 

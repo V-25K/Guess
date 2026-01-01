@@ -11,6 +11,7 @@ import {
   isValidDynamicTTL,
   InvalidTTLError,
   TTL,
+  capUserDataTTL,
 } from './cache.service.js';
 
 describe('CacheService Properties', () => {
@@ -193,3 +194,173 @@ describe('CacheService Properties', () => {
       );
     });
   });
+
+
+  /**
+   * **Feature: data-retention-compliance, Property 1: TTL Capping Invariant**
+   * 
+   * *For any* requested TTL value (from 0 to any positive integer), the effective TTL
+   * applied to user data SHALL equal the minimum of the requested TTL and USER_DATA_RETENTION
+   * (30 days). This ensures TTLs longer than 30 days are capped, while shorter TTLs pass
+   * through unchanged.
+   * 
+   * **Validates: Requirements 1.3, 1.4, 2.1**
+   */
+  describe('Property 1: TTL Capping Invariant', () => {
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000; // 2,592,000,000 ms
+
+    it('should verify USER_DATA_RETENTION constant equals 30 days in milliseconds', () => {
+      expect(TTL.USER_DATA_RETENTION).toBe(THIRTY_DAYS_MS);
+    });
+
+    it('should verify USER_DATA_RETENTION_SECONDS constant equals 30 days in seconds', () => {
+      expect(TTL.USER_DATA_RETENTION_SECONDS).toBe(30 * 24 * 60 * 60);
+    });
+
+    it('should cap TTL values greater than 30 days to USER_DATA_RETENTION', () => {
+      fc.assert(
+        fc.property(
+          // Generate TTL values greater than 30 days (up to 100 days)
+          fc.integer({ min: THIRTY_DAYS_MS + 1, max: 100 * 24 * 60 * 60 * 1000 }),
+          (requestedTTL) => {
+            const effectiveTTL = capUserDataTTL(requestedTTL);
+            // Effective TTL should be capped at USER_DATA_RETENTION
+            expect(effectiveTTL).toBe(TTL.USER_DATA_RETENTION);
+            // Verify the invariant: effective = min(requested, USER_DATA_RETENTION)
+            expect(effectiveTTL).toBe(Math.min(requestedTTL, TTL.USER_DATA_RETENTION));
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    it('should pass through TTL values less than or equal to 30 days unchanged', () => {
+      fc.assert(
+        fc.property(
+          // Generate TTL values from 0 to 30 days
+          fc.integer({ min: 0, max: THIRTY_DAYS_MS }),
+          (requestedTTL) => {
+            const effectiveTTL = capUserDataTTL(requestedTTL);
+            // Effective TTL should equal the requested TTL
+            expect(effectiveTTL).toBe(requestedTTL);
+            // Verify the invariant: effective = min(requested, USER_DATA_RETENTION)
+            expect(effectiveTTL).toBe(Math.min(requestedTTL, TTL.USER_DATA_RETENTION));
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    it('should satisfy the invariant: effective TTL = min(requested, USER_DATA_RETENTION) for any positive TTL', () => {
+      fc.assert(
+        fc.property(
+          // Generate any positive TTL value (0 to 365 days)
+          fc.integer({ min: 0, max: 365 * 24 * 60 * 60 * 1000 }),
+          (requestedTTL) => {
+            const effectiveTTL = capUserDataTTL(requestedTTL);
+            const expectedTTL = Math.min(requestedTTL, TTL.USER_DATA_RETENTION);
+            expect(effectiveTTL).toBe(expectedTTL);
+          }
+        ),
+        { numRuns: 100 }
+      );
+    });
+
+    it('should handle boundary value exactly at 30 days', () => {
+      const effectiveTTL = capUserDataTTL(THIRTY_DAYS_MS);
+      expect(effectiveTTL).toBe(THIRTY_DAYS_MS);
+    });
+
+    it('should handle boundary value just above 30 days', () => {
+      const effectiveTTL = capUserDataTTL(THIRTY_DAYS_MS + 1);
+      expect(effectiveTTL).toBe(THIRTY_DAYS_MS);
+    });
+
+    it('should handle boundary value just below 30 days', () => {
+      const effectiveTTL = capUserDataTTL(THIRTY_DAYS_MS - 1);
+      expect(effectiveTTL).toBe(THIRTY_DAYS_MS - 1);
+    });
+  });
+
+
+/**
+ * Unit tests for CacheService TTL enforcement
+ * 
+ * Tests for Requirements 2.1, 2.2, 2.3, 2.4
+ */
+describe('CacheService TTL Enforcement', () => {
+  const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+  const FIVE_MINUTES_MS = 5 * 60 * 1000;
+
+  describe('setUserData TTL capping (Requirement 2.1)', () => {
+    it('should cap TTL > 30 days to USER_DATA_RETENTION', () => {
+      // TTL of 60 days should be capped to 30 days
+      const requestedTTL = 60 * 24 * 60 * 60 * 1000;
+      const effectiveTTL = capUserDataTTL(requestedTTL);
+      expect(effectiveTTL).toBe(THIRTY_DAYS_MS);
+    });
+
+    it('should pass through TTL < 30 days unchanged', () => {
+      // TTL of 7 days should pass through
+      const requestedTTL = 7 * 24 * 60 * 60 * 1000;
+      const effectiveTTL = capUserDataTTL(requestedTTL);
+      expect(effectiveTTL).toBe(requestedTTL);
+    });
+
+    it('should pass through TTL exactly at 30 days', () => {
+      const effectiveTTL = capUserDataTTL(THIRTY_DAYS_MS);
+      expect(effectiveTTL).toBe(THIRTY_DAYS_MS);
+    });
+  });
+
+  describe('setUserData default TTL behavior (Requirement 2.2)', () => {
+    it('should use USER_PROFILE TTL (5 minutes) as default', () => {
+      expect(TTL.USER_PROFILE).toBe(FIVE_MINUTES_MS);
+    });
+
+    it('should have default TTL less than USER_DATA_RETENTION', () => {
+      // Default TTL should be less than 30 days, so no capping needed
+      expect(TTL.USER_PROFILE).toBeLessThan(TTL.USER_DATA_RETENTION);
+    });
+  });
+
+  describe('capUserDataTTL helper function (Requirement 2.3)', () => {
+    it('should return min(requestedTTL, USER_DATA_RETENTION)', () => {
+      // Test with various TTL values
+      const testCases = [
+        { requested: 1000, expected: 1000 },
+        { requested: FIVE_MINUTES_MS, expected: FIVE_MINUTES_MS },
+        { requested: THIRTY_DAYS_MS, expected: THIRTY_DAYS_MS },
+        { requested: THIRTY_DAYS_MS + 1, expected: THIRTY_DAYS_MS },
+        { requested: 100 * 24 * 60 * 60 * 1000, expected: THIRTY_DAYS_MS },
+      ];
+
+      for (const { requested, expected } of testCases) {
+        expect(capUserDataTTL(requested)).toBe(expected);
+      }
+    });
+
+    it('should handle zero TTL', () => {
+      expect(capUserDataTTL(0)).toBe(0);
+    });
+
+    it('should handle very small TTL values', () => {
+      expect(capUserDataTTL(1)).toBe(1);
+      expect(capUserDataTTL(100)).toBe(100);
+    });
+  });
+
+  describe('TTL constants validation (Requirement 2.4)', () => {
+    it('should have USER_DATA_RETENTION equal to 30 days in milliseconds', () => {
+      expect(TTL.USER_DATA_RETENTION).toBe(2592000000);
+    });
+
+    it('should have USER_DATA_RETENTION_SECONDS equal to 30 days in seconds', () => {
+      expect(TTL.USER_DATA_RETENTION_SECONDS).toBe(2592000);
+    });
+
+    it('should have consistent values between ms and seconds constants', () => {
+      expect(TTL.USER_DATA_RETENTION).toBe(TTL.USER_DATA_RETENTION_SECONDS * 1000);
+    });
+  });
+});

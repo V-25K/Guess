@@ -36,8 +36,8 @@ describe('Input Component', () => {
 
   it('applies error styling when error is present', () => {
     const { container } = render(<Input error="Error" />);
-    // Error state applies border-error class to the container
-    const inputContainer = container.querySelector('.border-error');
+    // Error state applies border-red-500 class to the container
+    const inputContainer = container.querySelector('.border-red-500');
     expect(inputContainer).toBeInTheDocument();
   });
 

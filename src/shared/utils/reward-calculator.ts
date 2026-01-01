@@ -138,19 +138,6 @@ export function getCreationReward(): Reward {
 }
 
 /**
- * Get the reward for receiving a comment on a challenge.
- * This reward is given to the challenge creator for each comment.
- * 
- * @returns Reward object containing 1 point and 1 exp
- * 
- * @example
- * getCommentReward() // { points: 1, exp: 1 }
- */
-export function getCommentReward(): Reward {
-  return REWARDS.COMMENT_ON_CHALLENGE;
-}
-
-/**
  * Get the creator bonus when someone solves their challenge
  */
 export function getCreatorBonus(): Bonus {
