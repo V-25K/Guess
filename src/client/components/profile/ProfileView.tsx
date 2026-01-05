@@ -1,8 +1,6 @@
 /**
  * Profile View Component (React)
  * Displays user statistics and progression
- * Uses Tailwind CSS for styling
- * Requirements: 1.2, 5.3
  */
 
 import React, { useEffect, useState } from 'react';

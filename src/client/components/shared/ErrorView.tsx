@@ -1,8 +1,6 @@
 /**
  * Error View Component
  * Displays error messages with optional retry action
- * Uses Tailwind CSS for styling
- * Requirements: 1.2
  */
 
 import React from 'react';

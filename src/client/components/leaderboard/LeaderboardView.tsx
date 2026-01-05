@@ -1,7 +1,6 @@
 /**
  * Leaderboard View Component
- * Displays top players and user's rank using Tailwind CSS
- * Requirements: 1.2
+ * Displays top players and user's rank
  */
 
 import React, { useEffect, useState } from 'react';

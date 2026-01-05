@@ -1,8 +1,6 @@
 /**
  * Input Component
  * Reusable text input with label, error, and helper text support
- * Uses Tailwind CSS for styling
- * Requirements: 1.2, 5.1
  */
 
 import React from 'react';

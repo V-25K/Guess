@@ -1,8 +1,6 @@
 /**
  * LeaderboardEntry Component
  * Displays a single leaderboard entry with rank, username, level, and points
- * Uses Tailwind CSS for styling
- * Requirements: 1.2
  */
 
 import React from 'react';

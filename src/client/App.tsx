@@ -1,10 +1,6 @@
 /**
  * Root Application Component
  * Manages global state, routing, and data fetching for the React client
- * 
- * Requirements:
- * - 5.3: Split components exceeding 300 lines
- * - 7.1: Use React hooks (useState, useReducer, useContext) for local and shared state
  */
 
 import React, { useEffect, lazy, Suspense, useCallback, useState } from 'react';
@@ -16,7 +12,6 @@ import { useViewMode } from './hooks/useViewMode';
 import { useImagePreloader, ALL_APP_ASSETS } from './hooks/useImagePreloader';
 import { apiClient } from './api/client';
 import { NavigationBar } from './components/navigation/NavigationBar';
-import { ToastProvider } from './components/shared/Toast';
 
 // Lazy load secondary views for code splitting
 const GameplayView = lazy(() => import('./components/gameplay/GameplayView').then(m => ({ default: m.GameplayView })));
@@ -143,7 +138,6 @@ export function App() {
 
   /**
    * Enhanced navigation handler that requests expanded mode for certain views
-   * Requirements: 1.4 - Request expanded mode before displaying Profile, Leaderboard, Awards, Create
    */
   const handleNavigate = useCallback(
     async (view: ViewType, event?: React.MouseEvent) => {
@@ -178,7 +172,6 @@ export function App() {
 
   /**
    * Fetch leaderboard preview data (top 5 players and current user rank)
-   * Requirements: 3.4, 5.1, 5.2, 5.5
    */
   const fetchLeaderboardPreview = async () => {
     dispatch({ type: 'SET_LEADERBOARD_PREVIEW_LOADING', payload: true });
@@ -227,7 +220,7 @@ export function App() {
       dispatch({ type: 'SET_USER', payload: profileData });
       dispatch({ type: 'SET_USER_LOADING', payload: false });
       
-      // Fetch leaderboard preview data in parallel - Requirements: 3.4, 5.1, 5.2
+      // Fetch leaderboard preview data in parallel
       fetchLeaderboardPreview();
 
       // Fetch postData from server (contains challengeId, openDirectly, initialView if set during post creation)

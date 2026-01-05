@@ -1,8 +1,6 @@
 /**
  * Toast Component
  * Notification component with auto-dismiss functionality
- * Uses Tailwind CSS for styling with reduced-motion support
- * Requirements: 1.2, 8.5
  */
 
 import React, { useEffect, useCallback, useRef } from 'react';

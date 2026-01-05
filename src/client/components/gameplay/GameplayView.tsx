@@ -1,8 +1,6 @@
 /**
  * Gameplay View Component (React)
  * Main gameplay view for playing challenges
- * Uses Tailwind CSS for styling
- * Requirements: 1.2, 4.3, 5.2, 8.1
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';

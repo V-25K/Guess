@@ -1,8 +1,6 @@
 /**
  * Awards View Component
  * Displays user achievements and badges
- * Uses Tailwind CSS for styling
- * Requirements: 1.2
  */
 
 import React, { useState, useEffect } from "react";

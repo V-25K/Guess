@@ -1,8 +1,6 @@
 /**
  * StatsGrid Component
  * Displays user statistics in a grid layout
- * Uses Tailwind CSS for styling
- * Requirements: 1.2, 5.3
  */
 
 import React from 'react';

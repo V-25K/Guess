@@ -1,10 +1,6 @@
 /**
  * NavigationBar Component
  * Bottom navigation bar with icon-only buttons
- * Requirements: 1.1, 1.2, 1.3 - View mode navigation control
- * Requirements: 4.6 - Active state indicators
- * Requirements: 5.1 - Touch-friendly button sizes (44x44px minimum)
- * Requirements: 8.1 - ARIA labels and roles
  */
 
 import React from 'react';
@@ -48,7 +44,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
   const navItemBaseStyles = clsx(
     // Layout
     'flex items-center justify-center',
-    // Size - touch-friendly (Requirements: 5.1)
+    // Size - touch-friendly (44x44px minimum)
     'w-12 h-12 min-w-touch min-h-touch',
     // Shape
     'rounded-xl',
@@ -58,7 +54,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
     'cursor-pointer',
     // Transition
     'transition-all duration-200 motion-reduce:transition-none',
-    // Focus styles for accessibility (Requirements: 8.3)
+    // Focus styles for accessibility
     'focus:outline-none focus:ring-2 focus:ring-game-primary dark:focus:ring-[#f0d078] focus:ring-offset-2 dark:focus:ring-offset-[#1a2332]'
   );
 

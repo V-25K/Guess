@@ -1,8 +1,6 @@
 /**
  * RateLimitService
  * Service for managing rate limits using Redis with sliding window algorithm
- * 
- * Requirements: 1.1, 1.2, 1.4, 7.1, 7.2
  */
 
 import { redis } from '@devvit/web/server';
@@ -24,8 +22,6 @@ export interface RateLimitResult {
 /**
  * Service for managing rate limits using Redis
  * Implements sliding window counter algorithm
- * 
- * Requirements: 1.1, 1.2, 1.4, 7.1, 7.2
  */
 export class RateLimitService {
   private readonly keyPrefix = 'ratelimit';
@@ -42,8 +38,6 @@ export class RateLimitService {
    * @param limit - Maximum requests allowed
    * @param windowSeconds - Time window in seconds
    * @returns Rate limit check result
-   * 
-   * Requirements: 1.1, 1.2, 7.1, 7.2
    */
   async checkLimit(
     key: string,
@@ -91,7 +85,6 @@ export class RateLimitService {
     } catch (error) {
       // Fail open on error - allow request if rate limiting fails
       // This prevents rate limiting from becoming a single point of failure
-      // Requirement: 1.4, 7.2
       console.error('Rate limit check error (failing open):', error);
       return {
         allowed: true,
@@ -121,26 +114,32 @@ export class RateLimitService {
   /**
    * Increment counter for a key atomically
    * 
-   * Uses Redis transaction for atomic increment + expire to ensure:
-   * - Counter is incremented exactly once
-   * - TTL is set to prevent memory leaks
-   * - Operations are atomic (no race conditions)
+   * Uses Redis INCR with EXPIRE for better reliability.
+   * Avoids complex transactions that can fail due to key modifications.
    * 
    * @param key - Redis key
    * @param ttlSeconds - Time to live in seconds (2x window for sliding window)
-   * 
-   * Requirements: 1.2, 1.3
    */
   private async incrementCounter(key: string, ttlSeconds: number): Promise<void> {
     try {
-      // Use Redis transaction for atomic increment + expire
-      const txn = await redis.watch(key);
-      await txn.multi();
-      await txn.incrBy(key, 1);
-      await txn.expire(key, ttlSeconds);
-      await txn.exec();
+      // Use separate operations - INCR is atomic and creates key if needed
+      await redis.incrBy(key, 1);
+      
+      // Set expiration - this is acceptable as a separate operation
+      // The key will expire anyway, preventing memory leaks
+      await redis.expire(key, ttlSeconds);
     } catch (error) {
       console.error('Error incrementing rate limit counter:', error);
+      
+      // Log additional context for debugging Redis issues
+      console.error('Rate limit context:', {
+        key,
+        ttlSeconds,
+        timestamp: new Date().toISOString(),
+        errorType: error instanceof Error ? error.constructor.name : typeof error,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
+      
       // Don't throw - fail open
     }
   }

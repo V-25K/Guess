@@ -1,8 +1,6 @@
 /**
  * Avatar Component
  * Displays user avatar with image URL and fallback placeholder
- * Uses Tailwind CSS for styling
- * Requirements: 1.2, 8.4
  */
 
 import React, { useState } from 'react';

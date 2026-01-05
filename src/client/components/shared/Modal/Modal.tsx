@@ -1,8 +1,6 @@
 /**
  * Modal Component
  * Accessible modal dialog with focus trapping
- * Uses Tailwind CSS for styling
- * Requirements: 1.2, 8.1
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';

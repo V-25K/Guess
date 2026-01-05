@@ -1,8 +1,6 @@
 /**
  * Card Component
  * Reusable card container with different variants and padding options
- * Uses Tailwind CSS for styling
- * Requirements: 1.2, 4.2
  */
 
 import React from 'react';

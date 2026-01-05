@@ -3,7 +3,7 @@
  * Displayed when the player has completed all available challenges
  */
 
-
+import React from 'react';
 import { Button } from '../shared/Button';
 
 export interface AllCaughtUpViewProps {

@@ -1,8 +1,6 @@
 /**
  * ImageInput Component
  * Input field for image upload with preview and description
- * Uses Devvit's showForm API for image uploads
- * Requirements: 8.1, 8.3, 8.4
  */
 
 import React, { useState } from 'react';

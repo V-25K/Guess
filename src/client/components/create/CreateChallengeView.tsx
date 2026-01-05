@@ -1,8 +1,6 @@
 /**
  * Create Challenge View Component (React)
  * Form for creating new challenges with answer set preview flow
- * Uses Tailwind CSS for styling
- * Requirements: 1.2
  * 
  * Flow: Form → AI generates answers → Review page → Edit/Confirm → Submit
  */

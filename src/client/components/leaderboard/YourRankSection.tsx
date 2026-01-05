@@ -2,8 +2,6 @@
  * YourRankSection Component
  * Displays the current user's rank, username, and total points
  * Persists across all pagination states
- * Uses Tailwind CSS for styling
- * Requirements: 1.2
  */
 
 import React from 'react';

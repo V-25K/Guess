@@ -1,8 +1,6 @@
 /**
  * Badge Component
  * Reusable badge for displaying status, labels, or counts
- * Uses Tailwind CSS for styling
- * Requirements: 1.2
  */
 
 import React from 'react';

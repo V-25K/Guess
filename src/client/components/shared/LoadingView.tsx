@@ -1,8 +1,6 @@
 /**
  * Loading View Component
  * Displays a loading spinner and message
- * Uses Tailwind CSS with reduced-motion support
- * Requirements: 1.2, 8.5
  */
 
 import React from 'react';

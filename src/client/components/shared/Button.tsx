@@ -1,8 +1,6 @@
 /**
  * Button Component
  * Reusable button with different variants and sizes
- * Uses Tailwind CSS for styling
- * Requirements: 1.2, 4.1, 4.5, 5.1, 8.3
  */
 
 import React from 'react';

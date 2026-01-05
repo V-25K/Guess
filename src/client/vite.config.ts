@@ -26,24 +26,9 @@ export default defineConfig({
         create: resolve(__dirname, 'entries/create.html'),
       },
       output: {
-        manualChunks: (id) => {
-          // React core in its own chunk
-          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
-            return 'react-vendor';
-          }
-          // Group feature views for lazy loading
-          if (id.includes('/components/profile/')) {
-            return 'profile-view';
-          }
-          if (id.includes('/components/leaderboard/')) {
-            return 'leaderboard-view';
-          }
-          if (id.includes('/components/create/')) {
-            return 'create-view';
-          }
-          if (id.includes('/components/gameplay/')) {
-            return 'gameplay';
-          }
+        manualChunks: {
+          // Ensure React is in its own chunk and loads first
+          'react-vendor': ['react', 'react-dom'],
         },
         // Optimize chunk file names
         chunkFileNames: 'assets/[name]-[hash].js',
@@ -71,5 +56,14 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  // Ensure proper module resolution for React
+  optimizeDeps: {
+    include: ['react', 'react-dom'],
+    force: true,
+  },
+  // Ensure React is available globally
+  define: {
+    global: 'globalThis',
   },
 });

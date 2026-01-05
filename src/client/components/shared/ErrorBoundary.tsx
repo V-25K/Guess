@@ -1,8 +1,6 @@
 /**
  * ErrorBoundary Component
  * Catches and displays component errors with recovery options
- * Uses Tailwind CSS for styling
- * Requirements: 1.2
  */
 
 import React, { Component, ReactNode } from 'react';

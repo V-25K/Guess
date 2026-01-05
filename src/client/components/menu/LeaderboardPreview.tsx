@@ -2,7 +2,6 @@
  * LeaderboardPreview Component
  * Displays a compact preview of the leaderboard on the main menu
  * Shows top 5 players and current user's rank if outside top 5
- * Requirements: 3.4, 5.1, 5.2, 5.3, 5.4, 5.5
  */
 
 import React from 'react';
