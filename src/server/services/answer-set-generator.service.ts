@@ -216,8 +216,8 @@ Output:
 ### RULES
 - Output STRICT JSON only.
 - Do NOT include the Target Answer in the lists (the system handles that).
-- Ensure "Correct" list has 5-20 items.
-- Ensure "Close" list has 5-15 items.
+- Ensure "Correct" list has 30-50 items.
+- Ensure "Close" list has 30-50 items.
 - Lowercase everything.`;
     }
 

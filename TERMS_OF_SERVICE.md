@@ -126,9 +126,6 @@ Terms may be updated. Continued use constitutes acceptance.
 
 ## 15. Contact
 
-For questions:
-
-* Contact subreddit moderators
-* Use the project repository issue tracker
+For questions about this app, contact the subreddit moderators where it's installed.
 
 ---
