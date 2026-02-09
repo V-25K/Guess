@@ -39,7 +39,6 @@ export const ImagesSection: React.FC<ImagesSectionProps> = ({
             <div className="text-xs text-blue-800 dark:text-blue-200">
               <p className="font-medium mb-1">Image Tips:</p>
               <ul className="space-y-0.5 text-blue-700 dark:text-blue-300">
-                <li>• Square (1:1) images display best in the game</li>
                 <li>• Descriptions become hints - make them helpful but not obvious</li>
                 <li>• Use clear, high-quality images that show the connection</li>
               </ul>
