@@ -9,7 +9,7 @@ Creating engaging challenges in Linkaroo requires thoughtful image selection and
 - **Format**: PNG, JPEG, or GIF
 - **Size**: Maximum 20MB per image
 - **Quantity**: Minimum 2 images, maximum 3 images
-- **Aspect Ratio**: While any aspect ratio is accepted, **1:1 (square) images work best** for optimal display
+- **Display**: Images are automatically formatted to display as squares (1:1 aspect ratio) in the game
 
 ### Content Guidelines
 
