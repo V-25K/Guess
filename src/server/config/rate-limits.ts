@@ -53,6 +53,11 @@ export const RATE_LIMITS: Record<string, RateLimitConfig> = {
     windowSeconds: 60,
     roleMultipliers: { moderator: 2 },
   },
+  'POST /api/attempts/giveup': {
+    limit: 10,
+    windowSeconds: 60,
+    roleMultipliers: { moderator: 2 },
+  },
   'POST /api/attempts/hint': {
     limit: 20,
     windowSeconds: 60,

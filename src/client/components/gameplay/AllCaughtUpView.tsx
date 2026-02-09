@@ -5,6 +5,9 @@
 
 import React from 'react';
 import { Button } from '../shared/Button';
+import { accessControlManager } from '../../services/AccessControlManager';
+import { AccessDeniedPopup, useAccessDeniedPopup } from '../shared/AccessDeniedPopup';
+import { userAuthService } from '../../services/user-auth.service';
 
 export interface AllCaughtUpViewProps {
   onBackToMenu: () => void;
@@ -17,6 +20,80 @@ export function AllCaughtUpView({
   onCreateChallenge,
   canCreate = false,
 }: AllCaughtUpViewProps) {
+  const { popupState, showAccessDeniedPopup, hideAccessDeniedPopup } = useAccessDeniedPopup();
+
+  /**
+   * Handle create challenge navigation with access control validation
+   * Requirements: 3.3, 3.4 - Apply access control to all create functionality entry points
+   */
+  const handleCreateChallenge = async () => {
+    try {
+      // Get current user
+      const currentUser = await userAuthService.getCurrentUser();
+      
+      // Validate access using AccessControlManager
+      const accessResult = accessControlManager.validateCreateAccess(currentUser, 'menu_option');
+      
+      if (accessResult.granted) {
+        // Access granted - proceed with navigation
+        if (onCreateChallenge) {
+          onCreateChallenge();
+        }
+      } else {
+        // Access denied - show consistent popup
+        showAccessDeniedPopup(accessResult, 'menu_option');
+      }
+    } catch (error) {
+      console.error('Error checking create access:', error);
+      // Show generic error popup with consistent messaging
+      showAccessDeniedPopup({
+        granted: false,
+        reason: 'PERMISSION_DENIED',
+        message: 'Unable to verify permissions. Please try again.',
+        suggestedActions: ['Try again', 'Return to menu']
+      }, 'menu_option');
+    }
+  };
+
+  /**
+   * Handle suggested actions from access denied popup
+   * Requirements: 3.6 - Redirect users to appropriate alternative actions
+   */
+  const handleActionSelect = (action: string) => {
+    switch (action) {
+      case 'Log in with your Reddit account':
+        // Redirect to login
+        window.location.href = '/auth/login';
+        break;
+      
+      case 'Continue playing to reach level 3':
+      case 'Play more challenges to level up':
+      case 'Browse existing challenges':
+        // Navigate back to menu to find more challenges
+        onBackToMenu();
+        break;
+      
+      case 'Check your current level in Profile':
+        // This would need to be handled by the parent component
+        // For now, just go back to menu
+        onBackToMenu();
+        break;
+      
+      case 'Return to menu':
+        onBackToMenu();
+        break;
+      
+      case 'Try again':
+        // Close popup and allow retry
+        hideAccessDeniedPopup();
+        break;
+      
+      default:
+        // Default action - close popup
+        hideAccessDeniedPopup();
+        break;
+    }
+  };
   return (
     <div className="w-full h-full bg-[#FFF8F0] dark:bg-[#0f1419] flex flex-col items-center justify-center p-6 text-center">
       {/* Celebration Icon */}
@@ -55,7 +132,7 @@ export function AllCaughtUpView({
         {/* Create Challenge Option */}
         {canCreate && onCreateChallenge && (
           <button
-            onClick={onCreateChallenge}
+            onClick={handleCreateChallenge}
             className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#FF4500] to-[#FF6B35] dark:from-[#3b5998] dark:to-[#5a7fc2] text-white font-semibold flex items-center justify-center gap-2 shadow-md hover:from-[#E03D00] hover:to-[#E55A2B] dark:hover:from-[#4a6aa8] dark:hover:to-[#6a8fd2] transition-all"
           >
             <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
@@ -75,6 +152,17 @@ export function AllCaughtUpView({
       <p className="text-xs text-neutral-400 dark:text-white/30 mt-8">
         New challenges are added regularly by the community
       </p>
+
+      {/* Access Denied Popup */}
+      {popupState.accessResult && popupState.entryPoint && (
+        <AccessDeniedPopup
+          isVisible={popupState.isVisible}
+          accessResult={popupState.accessResult}
+          entryPoint={popupState.entryPoint}
+          onDismiss={hideAccessDeniedPopup}
+          onActionSelect={handleActionSelect}
+        />
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@
  * - Predictable state updates through a reducer
  * - Clear separation of concerns between UI and game state
  * - Type-safe actions and state
+ * - Support for both authenticated and guest users
  */
 
 import { useReducer, useCallback, useMemo } from 'react';
@@ -22,6 +23,8 @@ import type {
 import { createInitialGameState } from '../types/game.types';
 import type { AttemptResult } from '../../shared/models/attempt.types';
 import { apiClient } from '../api/client';
+import { userAuthService } from '../services/user-auth.service';
+import { isGuestProfile } from '../../shared/models/user.types';
 
 /**
  * Game state reducer
@@ -230,8 +233,19 @@ export function useGameReducer(): GameContextValue {
       // Refresh user profile to get updated stats
       if (result.isCorrect || result.gameOver) {
         try {
-          const updatedProfile = await apiClient.getUserProfile();
+          const updatedProfile = await userAuthService.refreshUserProfile();
           dispatch({ type: 'SET_USER', payload: updatedProfile });
+          
+          // For guest users, also update local stats
+          if (isGuestProfile(updatedProfile)) {
+            userAuthService.updateGuestStats({
+              pointsEarned: result.pointsEarned || 0,
+              experienceEarned: result.experienceEarned || 0,
+              challengeAttempted: true,
+              challengeSolved: result.isCorrect,
+              streakBroken: !result.isCorrect && result.gameOver,
+            });
+          }
         } catch (profileError) {
           console.error('Error refreshing user profile:', profileError);
         }
@@ -263,9 +277,9 @@ export function useGameReducer(): GameContextValue {
     dispatch({ type: 'CLEAR_ERRORS' });
 
     try {
-      // Fetch user profile
-      const profileData = await apiClient.getUserProfile();
-      dispatch({ type: 'SET_USER', payload: profileData });
+      // Get user (authenticated or guest) - authentication is now optional
+      const user = await userAuthService.getCurrentUser();
+      dispatch({ type: 'SET_USER', payload: user });
       dispatch({ type: 'SET_USER_LOADING', payload: false });
 
       // Fetch challenges
@@ -301,13 +315,23 @@ export function useGameReducer(): GameContextValue {
   }, [state.challenges, state.currentChallengeIndex]);
 
   const isCreator = useMemo(() => {
-    return currentChallenge && state.user
-      ? currentChallenge.creator_id === state.user.user_id
-      : false;
+    if (!currentChallenge || !state.user) {
+      return false;
+    }
+    
+    const userId = isGuestProfile(state.user) ? state.user.id : state.user.user_id;
+    return currentChallenge.creator_id === userId;
   }, [currentChallenge, state.user]);
 
   const canCreateChallenge = useMemo(() => {
     if (!state.user) return false;
+    
+    // Guest users CANNOT create challenges - they must be authenticated
+    if (isGuestProfile(state.user)) {
+      return false;
+    }
+    
+    // Authenticated users only
     if (!state.user.last_challenge_created_at) return true;
     
     const lastCreated = new Date(state.user.last_challenge_created_at).getTime();
@@ -316,9 +340,15 @@ export function useGameReducer(): GameContextValue {
   }, [state.user]);
 
   const rateLimitTimeRemaining = useMemo(() => {
-    if (!state.user?.last_challenge_created_at) return 0;
+    if (!state.user) return 0;
     
-    const lastCreated = new Date(state.user.last_challenge_created_at).getTime();
+    const lastCreatedAt = isGuestProfile(state.user) 
+      ? state.user.last_challenge_created_at 
+      : state.user.last_challenge_created_at;
+      
+    if (!lastCreatedAt) return 0;
+    
+    const lastCreated = new Date(lastCreatedAt).getTime();
     const cooldownMs = 24 * 60 * 60 * 1000; // 24 hours
     return Math.max(0, cooldownMs - (Date.now() - lastCreated));
   }, [state.user]);

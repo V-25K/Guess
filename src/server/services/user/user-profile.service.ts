@@ -11,7 +11,7 @@ import { BaseService } from '../base.service.js';
 import { UserRepository } from '../../repositories/user.repository.js';
 import { UserCacheService } from './user-cache.service.js';
 import { calculateLevel } from '../../../shared/utils/level-calculator.js';
-import type { UserProfile, UserProfileUpdate } from '../../../shared/models/user.types.js';
+import type { UserProfile, UserProfileUpdate, GuestProfile, GuestProfileUpdate, AnyUserProfile, isGuestProfile } from '../../../shared/models/user.types.js';
 import { deduplicateRequest, createDedupeKey } from '../../../shared/utils/request-deduplication.js';
 import type { Result } from '../../../shared/utils/result.js';
 import { ok, err, isOk } from '../../../shared/utils/result.js';
@@ -212,6 +212,8 @@ export class UserProfileService extends BaseService {
       best_streak: 0,
       last_challenge_created_at: null,
       role: 'player',
+      is_subscribed: false,
+      subscribed_at: null,
     };
 
     const result = await this.userRepo.create(newProfile);
@@ -284,5 +286,225 @@ export class UserProfileService extends BaseService {
    */
   async getUserRank(userId: string): Promise<Result<number | null, AppError>> {
     return this.userRepo.getUserRank(userId);
+  }
+
+  // ============================================
+  // Guest User Operations
+  // ============================================
+
+  /**
+   * Check if a guest profile exists without creating it
+   * Returns true if profile exists, false otherwise
+   */
+  async guestProfileExists(guestId: string): Promise<Result<boolean, AppError>> {
+    const profileResult = await this.userRepo.findGuestById(guestId);
+    
+    if (!isOk(profileResult)) {
+      return profileResult;
+    }
+    
+    return ok(profileResult.value !== null);
+  }
+
+  /**
+   * Get guest user profile by guest ID, creating it if it doesn't exist
+   * Similar to getUserProfile but for guest users
+   * 
+   * Requirements: REQ-2.1, REQ-2.2
+   */
+  async getGuestProfile(guestId: string, guestProfile?: GuestProfile): Promise<Result<UserProfile | null, AppError>> {
+    // Validate guestId - prevent creating profiles for invalid guest IDs
+    if (!guestId || (!guestId.startsWith('guest_') && !guestId.startsWith('anon_')) || guestId.trim() === '') {
+      this.logError('UserProfileService.getGuestProfile', `Invalid guestId: "${guestId}"`);
+      return err(validationError([{ field: 'guestId', message: 'Invalid guest user ID format' }]));
+    }
+
+    // Check cache first
+    const cachedResult = await this.cacheService.getCachedProfile(guestId);
+
+    if (isOk(cachedResult) && cachedResult.value) {
+      this.logInfo('UserProfileService', `Returning cached guest profile for ${guestId}`);
+      return ok(cachedResult.value);
+    }
+
+    // Cache miss - proceed with DB fetch
+    if (!isOk(cachedResult)) {
+      this.logError('UserProfileService.getGuestProfile', cachedResult.error);
+    }
+
+    const dedupeKey = createDedupeKey('getGuestProfile', guestId);
+
+    return tryCatch(
+      async () => {
+        const profile = await deduplicateRequest(
+          dedupeKey,
+          async () => {
+            const dbProfileResult = await this.userRepo.findGuestById(guestId);
+
+            if (!isOk(dbProfileResult)) {
+              throw new Error(`Failed to fetch guest profile: ${JSON.stringify(dbProfileResult.error)}`);
+            }
+
+            let dbProfile = dbProfileResult.value;
+
+            if (dbProfile) {
+              // Validate and correct level if needed (self-healing for formula changes or bugs)
+              const correctLevel = calculateLevel(dbProfile.total_experience);
+              if (dbProfile.level !== correctLevel) {
+                this.logInfo(
+                  'UserProfileService',
+                  `Auto-correcting level for guest ${guestId}: ${dbProfile.level} → ${correctLevel} (${dbProfile.total_experience} XP)`
+                );
+                const updateResult = await this.userRepo.updateGuestProfile(guestId, { level: correctLevel });
+                if (!isOk(updateResult)) {
+                  throw new Error(`Failed to update guest level: ${JSON.stringify(updateResult.error)}`);
+                }
+                dbProfile.level = correctLevel;
+              }
+            } else if (guestProfile) {
+              this.logInfo('UserProfileService', `Creating new guest profile for ${guestId}`);
+              const createResult = await this.createGuestProfile(guestProfile);
+              if (!isOk(createResult)) {
+                throw new Error(`Failed to create guest profile: ${JSON.stringify(createResult.error)}`);
+              }
+              dbProfile = createResult.value;
+            }
+
+            // Cache the profile on miss
+            if (dbProfile) {
+              const cacheResult = await this.cacheService.setCachedProfile(guestId, dbProfile);
+              // Log cache failures but don't fail the operation
+              if (!isOk(cacheResult)) {
+                this.logError('UserProfileService.getGuestProfile', cacheResult.error);
+              }
+            }
+
+            return dbProfile;
+          }
+        );
+
+        return profile;
+      },
+      (error) => databaseError('getGuestProfile', String(error))
+    );
+  }
+
+  /**
+   * Create a new guest user profile with default values
+   * Validates guest profile data before creation
+   * 
+   * Requirements: REQ-2.1, REQ-2.2, REQ-2.3
+   */
+  async createGuestProfile(guestProfile: GuestProfile): Promise<Result<UserProfile, AppError>> {
+    // Validate guest profile data
+    const validation = this.userRepo.validateGuestUser(guestProfile);
+    if (!validation.isValid) {
+      this.logError('UserProfileService.createGuestProfile', `Validation failed: ${validation.errors.join(', ')}`);
+      return err(validationError(validation.errors.map(error => ({ field: 'guestProfile', message: error }))));
+    }
+
+    // Create the profile in database
+    const result = await this.userRepo.createGuestProfile(guestProfile);
+
+    if (isOk(result)) {
+      this.logInfo('UserProfileService', `Created guest profile for ${guestProfile.id}`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Update guest user profile with partial updates
+   * Invalidates cache on successful update
+   * 
+   * Requirements: REQ-2.1, REQ-2.2
+   */
+  async updateGuestProfile(guestId: string, updates: GuestProfileUpdate): Promise<Result<boolean, AppError>> {
+    // Validate guest ID format
+    if (!guestId || (!guestId.startsWith('guest_') && !guestId.startsWith('anon_'))) {
+      this.logError('UserProfileService.updateGuestProfile', `Invalid guestId: "${guestId}"`);
+      return err(validationError([{ field: 'guestId', message: 'Invalid guest user ID format' }]));
+    }
+
+    // Validate updates if they contain guest-specific fields
+    if (updates.username && !updates.username.startsWith('guest_')) {
+      return err(validationError([{ field: 'username', message: 'Guest username must start with "guest_"' }]));
+    }
+
+    if (updates.role && updates.role !== 'player') {
+      return err(validationError([{ field: 'role', message: 'Guest users must have role "player"' }]));
+    }
+
+    const result = await this.userRepo.updateGuestProfile(guestId, updates);
+
+    if (isOk(result) && result.value) {
+      // Invalidate cache using safe invalidation
+      await this.cacheService.safeInvalidateCache(guestId);
+      this.logInfo('UserProfileService', `Updated guest profile for ${guestId} and invalidated cache`);
+    }
+
+    return result;
+  }
+
+  /**
+   * Check if guest user can create a challenge (24-hour rate limit)
+   * Returns whether they can create and time remaining if they can't
+   * Fails closed on error to prevent rate limit bypass
+   */
+  async canGuestCreateChallenge(guestId: string): Promise<Result<{ canCreate: boolean; timeRemaining: number }, AppError>> {
+    const profileResult = await this.userRepo.findGuestById(guestId);
+
+    if (!isOk(profileResult)) {
+      // Fail closed on error to prevent rate limit bypass
+      this.logError('UserProfileService.canGuestCreateChallenge', profileResult.error);
+      return ok({ canCreate: false, timeRemaining: 0 });
+    }
+
+    const profile = profileResult.value;
+
+    if (!profile || !profile.last_challenge_created_at) {
+      return ok({ canCreate: true, timeRemaining: 0 });
+    }
+
+    // Guest users are always players, so no role bypass
+    const lastCreatedAt = new Date(profile.last_challenge_created_at);
+    const now = new Date();
+    const timeSinceLastCreation = now.getTime() - lastCreatedAt.getTime();
+    const twentyFourHoursInMs = 24 * 60 * 60 * 1000;
+
+    if (timeSinceLastCreation >= twentyFourHoursInMs) {
+      return ok({ canCreate: true, timeRemaining: 0 });
+    }
+
+    const timeRemaining = twentyFourHoursInMs - timeSinceLastCreation;
+    return ok({ canCreate: false, timeRemaining });
+  }
+
+  /**
+   * Get guest user's rank on the leaderboard
+   */
+  async getGuestUserRank(guestId: string): Promise<Result<number | null, AppError>> {
+    return this.userRepo.getGuestUserRank(guestId);
+  }
+
+  /**
+   * Delete guest user profile
+   */
+  async deleteGuestProfile(guestId: string): Promise<Result<boolean, AppError>> {
+    // Validate guest ID format
+    if (!guestId || (!guestId.startsWith('guest_') && !guestId.startsWith('anon_'))) {
+      this.logError('UserProfileService.deleteGuestProfile', `Invalid guestId: "${guestId}"`);
+      return err(validationError([{ field: 'guestId', message: 'Invalid guest user ID format' }]));
+    }
+
+    const result = await this.userRepo.deleteGuestProfile(guestId);
+
+    if (isOk(result) && result.value) {
+      // Invalidate cache
+      await this.cacheService.safeInvalidateCache(guestId);
+      this.logInfo('UserProfileService', `Deleted guest profile for ${guestId} and invalidated cache`);
+    }
+
+    return result;
   }
 }

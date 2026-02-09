@@ -14,7 +14,7 @@
 import type { Context } from '@devvit/server/server-context';
 import { BaseService } from './base.service.js';
 import { UserRepository } from '../repositories/user.repository.js';
-import type { UserProfile, UserProfileUpdate } from '../../shared/models/user.types.js';
+import type { UserProfile, UserProfileUpdate, GuestProfile, GuestProfileUpdate, AnyUserProfile } from '../../shared/models/user.types.js';
 import type { LeaderboardService } from './leaderboard.service.js';
 import type { Result } from '../../shared/utils/result.js';
 import type { AppError } from '../../shared/models/errors.js';
@@ -248,5 +248,161 @@ export class UserService extends BaseService {
    */
   getProgressionService(): UserProgressionService {
     return this.progressionService;
+  }
+
+  // ============================================
+  // Guest User Operations (delegated to focused services)
+  // ============================================
+
+  /**
+   * Check if a guest profile exists without creating it
+   * Delegates to UserProfileService
+   */
+  async guestProfileExists(guestId: string): Promise<Result<boolean, AppError>> {
+    return this.profileService.guestProfileExists(guestId);
+  }
+
+  /**
+   * Get guest user profile by ID, creating it if it doesn't exist
+   * Delegates to UserProfileService
+   */
+  async getGuestProfile(guestId: string, guestProfile?: GuestProfile): Promise<Result<UserProfile | null, AppError>> {
+    return this.profileService.getGuestProfile(guestId, guestProfile);
+  }
+
+  /**
+   * Create a new guest user profile with default values
+   * Delegates to UserProfileService
+   */
+  async createGuestProfile(guestProfile: GuestProfile): Promise<Result<UserProfile, AppError>> {
+    return this.profileService.createGuestProfile(guestProfile);
+  }
+
+  /**
+   * Update guest user profile with partial updates
+   * Delegates to UserProfileService
+   */
+  async updateGuestProfile(guestId: string, updates: GuestProfileUpdate): Promise<Result<boolean, AppError>> {
+    return this.profileService.updateGuestProfile(guestId, updates);
+  }
+
+  /**
+   * Check if guest user can create a challenge (24-hour rate limit)
+   * Delegates to UserProfileService
+   */
+  async canGuestCreateChallenge(guestId: string): Promise<Result<{ canCreate: boolean; timeRemaining: number }, AppError>> {
+    return this.profileService.canGuestCreateChallenge(guestId);
+  }
+
+  /**
+   * Get guest user's rank on the leaderboard
+   * Delegates to UserProfileService
+   */
+  async getGuestUserRank(guestId: string): Promise<Result<number | null, AppError>> {
+    return this.profileService.getGuestUserRank(guestId);
+  }
+
+  /**
+   * Delete guest user profile
+   * Delegates to UserProfileService
+   */
+  async deleteGuestProfile(guestId: string): Promise<Result<boolean, AppError>> {
+    return this.profileService.deleteGuestProfile(guestId);
+  }
+
+  // ============================================
+  // Guest User Progression Operations (delegated to UserProgressionService)
+  // ============================================
+
+  /**
+   * Award points and experience to a guest user
+   * Delegates to UserProgressionService
+   */
+  async awardGuestPoints(guestId: string, points: number, experience: number): Promise<Result<boolean, AppError>> {
+    return this.progressionService.awardGuestPoints(guestId, points, experience);
+  }
+
+  /**
+   * Deduct points from a guest user's total
+   * Delegates to UserProgressionService
+   */
+  async deductGuestPoints(guestId: string, points: number): Promise<Result<boolean, AppError>> {
+    return this.progressionService.deductGuestPoints(guestId, points);
+  }
+
+  /**
+   * Get experience required to reach next level for guest user
+   * Delegates to UserProgressionService
+   */
+  async getGuestExpToNextLevel(guestId: string): Promise<Result<number, AppError>> {
+    return this.progressionService.getGuestExpToNextLevel(guestId);
+  }
+
+  /**
+   * Increment guest user's streak on successful solve
+   * Delegates to UserProgressionService
+   */
+  async incrementGuestStreak(guestId: string): Promise<Result<number, AppError>> {
+    return this.progressionService.incrementGuestStreak(guestId);
+  }
+
+  /**
+   * Reset guest user's streak on game over
+   * Delegates to UserProgressionService
+   */
+  async resetGuestStreak(guestId: string): Promise<Result<void, AppError>> {
+    return this.progressionService.resetGuestStreak(guestId);
+  }
+
+  /**
+   * Get guest user's current streak
+   * Delegates to UserProgressionService
+   */
+  async getGuestCurrentStreak(guestId: string): Promise<Result<number, AppError>> {
+    return this.progressionService.getGuestCurrentStreak(guestId);
+  }
+
+  /**
+   * Increment guest challenges created count
+   * Delegates to UserProgressionService
+   */
+  async incrementGuestChallengesCreated(guestId: string): Promise<Result<boolean, AppError>> {
+    return this.progressionService.incrementGuestChallengesCreated(guestId);
+  }
+
+  /**
+   * Increment guest challenges attempted count
+   * Delegates to UserProgressionService
+   */
+  async incrementGuestChallengesAttempted(guestId: string): Promise<Result<boolean, AppError>> {
+    return this.progressionService.incrementGuestChallengesAttempted(guestId);
+  }
+
+  /**
+   * Increment guest challenges solved count
+   * Delegates to UserProgressionService
+   */
+  async incrementGuestChallengesSolved(guestId: string): Promise<Result<boolean, AppError>> {
+    return this.progressionService.incrementGuestChallengesSolved(guestId);
+  }
+
+  // ============================================
+  // Guest User Cleanup Operations
+  // ============================================
+
+  /**
+   * Clean up inactive guest users
+   * Delegates to UserRepository
+   */
+  async cleanupInactiveGuestUsers(daysInactive: number = 90): Promise<Result<number, AppError>> {
+    return this.userRepo.cleanupInactiveGuestUsers(daysInactive);
+  }
+
+  /**
+   * Validate guest user data
+   * Delegates to UserRepository
+   */
+  validateGuestUser(profile: Partial<GuestProfile>): { isValid: boolean; errors: string[] } {
+    return this.userRepo.validateGuestUser(profile);
   }
 }

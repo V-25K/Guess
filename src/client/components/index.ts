@@ -26,3 +26,6 @@ export * from './menu/index.js';
 
 // Awards components
 export * from './awards/index.js';
+
+// Registration components
+export * from './registration/index.js';

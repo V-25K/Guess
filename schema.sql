@@ -49,6 +49,9 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     best_streak integer NOT NULL DEFAULT 0,
     last_challenge_created_at timestamp,
     role text NOT NULL DEFAULT 'player',
+    is_guest boolean NOT NULL DEFAULT FALSE,
+    is_subscribed boolean NOT NULL DEFAULT FALSE,
+    subscribed_at timestamp,
     created_at timestamp NOT NULL DEFAULT now(),
     updated_at timestamp NOT NULL DEFAULT now()
 );
@@ -58,6 +61,9 @@ COMMENT ON TABLE user_profiles IS 'Stores user profile information, statistics, 
 COMMENT ON COLUMN user_profiles.user_id IS 'Reddit user ID in format t2_* (unique identifier)';
 COMMENT ON COLUMN user_profiles.username IS 'Reddit username for display purposes';
 COMMENT ON COLUMN user_profiles.role IS 'User role: player or mod';
+COMMENT ON COLUMN user_profiles.is_guest IS 'Identifies guest users (true) vs authenticated users (false)';
+COMMENT ON COLUMN user_profiles.is_subscribed IS 'Whether user is subscribed to the current subreddit';
+COMMENT ON COLUMN user_profiles.subscribed_at IS 'Timestamp when user subscribed to the subreddit';
 
 -- ----------------------------------------------------------------------------
 -- challenges
@@ -181,6 +187,26 @@ COMMENT ON COLUMN attempt_guesses.ai_explanation IS 'Optional AI-generated expla
 -- Index for leaderboard queries (order by points descending)
 CREATE INDEX IF NOT EXISTS idx_user_profiles_total_points 
     ON user_profiles(total_points DESC);
+
+-- Index for filtering by guest status
+CREATE INDEX IF NOT EXISTS idx_user_profiles_is_guest 
+    ON user_profiles(is_guest);
+
+-- Composite index for guest user leaderboard queries
+CREATE INDEX IF NOT EXISTS idx_user_profiles_guest_points 
+    ON user_profiles(is_guest, total_points DESC);
+
+-- Composite index for guest user role queries
+CREATE INDEX IF NOT EXISTS idx_user_profiles_guest_role 
+    ON user_profiles(is_guest, role);
+
+-- Index for subscription status queries
+CREATE INDEX IF NOT EXISTS idx_user_profiles_subscription 
+    ON user_profiles(is_subscribed);
+
+-- Composite index for subscription analytics
+CREATE INDEX IF NOT EXISTS idx_user_profiles_subscription_date 
+    ON user_profiles(is_subscribed, subscribed_at DESC);
 
 -- Index for user lookup by user_id (already covered by UNIQUE constraint)
 -- CREATE INDEX idx_user_profiles_user_id ON user_profiles(user_id);
@@ -514,6 +540,72 @@ $;
 
 COMMENT ON FUNCTION anonymize_inactive_users IS 'Anonymizes user profiles inactive for specified days, replacing identifiable info with [deleted] markers';
 
+-- ----------------------------------------------------------------------------
+-- cleanup_inactive_guest_users
+-- ----------------------------------------------------------------------------
+-- Removes guest user profiles that have been inactive for a specified number of days.
+-- This function supports data retention by cleaning up old guest profiles and their
+-- associated data (attempts, guesses) to prevent database bloat.
+--
+-- Parameters:
+--   p_days_inactive - Number of days of inactivity before deletion (default: 90)
+--
+-- Returns:
+--   profiles_deleted - Number of guest profiles that were deleted
+--   attempts_deleted - Number of attempts deleted
+--   guesses_deleted - Number of guesses deleted
+-- ----------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION cleanup_inactive_guest_users(p_days_inactive integer DEFAULT 90)
+RETURNS TABLE (
+    profiles_deleted integer,
+    attempts_deleted integer,
+    guesses_deleted integer
+)
+LANGUAGE plpgsql
+SET search_path = public
+AS $
+DECLARE
+    v_cutoff_date timestamp;
+    v_profiles_count integer := 0;
+    v_attempts_count integer := 0;
+    v_guesses_count integer := 0;
+BEGIN
+    -- Calculate the cutoff date
+    v_cutoff_date := now() - (p_days_inactive || ' days')::interval;
+    
+    -- Count attempts and guesses that will be deleted (for reporting)
+    SELECT COUNT(*) INTO v_attempts_count
+    FROM challenge_attempts ca
+    JOIN user_profiles up ON ca.user_id = up.user_id
+    WHERE up.is_guest = TRUE 
+    AND up.updated_at < v_cutoff_date;
+    
+    SELECT COUNT(*) INTO v_guesses_count
+    FROM attempt_guesses ag
+    JOIN challenge_attempts ca ON ag.attempt_id = ca.id
+    JOIN user_profiles up ON ca.user_id = up.user_id
+    WHERE up.is_guest = TRUE 
+    AND up.updated_at < v_cutoff_date;
+    
+    -- Delete inactive guest user profiles (CASCADE will handle related data)
+    DELETE FROM user_profiles
+    WHERE is_guest = TRUE 
+    AND updated_at < v_cutoff_date;
+    
+    GET DIAGNOSTICS v_profiles_count = ROW_COUNT;
+    
+    -- Return the counts
+    profiles_deleted := v_profiles_count;
+    attempts_deleted := v_attempts_count;
+    guesses_deleted := v_guesses_count;
+    
+    RETURN NEXT;
+END;
+$;
+
+COMMENT ON FUNCTION cleanup_inactive_guest_users IS 'Removes guest user profiles inactive for specified days and their associated data';
+
 -- ============================================================================
 -- GRANTS AND PERMISSIONS
 -- ============================================================================
@@ -543,7 +635,7 @@ DO $$
 BEGIN
     RAISE NOTICE 'Schema creation completed successfully!';
     RAISE NOTICE 'Tables created: user_profiles, challenges, challenge_attempts, attempt_guesses';
-    RAISE NOTICE 'Indexes created: 8 indexes for query optimization';
-    RAISE NOTICE 'Functions created: 5 stored procedures for atomic operations';
+    RAISE NOTICE 'Indexes created: 11 indexes for query optimization (including guest user indexes)';
+    RAISE NOTICE 'Functions created: 6 stored procedures for atomic operations';
 END $$;
 

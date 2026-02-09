@@ -19,6 +19,10 @@ export type { AvatarProps, AvatarSize } from './Avatar';
 export { Input } from './Input';
 export type { InputProps } from './Input';
 
+// Subscription Component
+export { SubscriptionButton, CompactSubscriptionButton, SubscriptionStatus } from './SubscriptionButton';
+export type { SubscriptionButtonProps } from './SubscriptionButton';
+
 // Card Component
 export { Card } from './Card';
 export type { CardProps, CardVariant, CardPadding } from './Card';
@@ -38,3 +42,10 @@ export type { ToastProps, ToastType } from './Toast';
 // Error Handling
 export { ErrorBoundary, withErrorBoundary } from './ErrorBoundary';
 export type { ErrorBoundaryProps } from './ErrorBoundary';
+
+// Access Control
+export { AccessDeniedPopup, useAccessDeniedPopup } from './AccessDeniedPopup';
+export type { AccessDeniedPopupProps } from './AccessDeniedPopup';
+
+// UI Consistency Components
+export { LoadingSpinner, ButtonIcon, SkipLink, ScreenReaderOnly } from './UIConsistencyComponents';

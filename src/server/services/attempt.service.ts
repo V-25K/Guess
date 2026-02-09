@@ -813,4 +813,71 @@ export class AttemptService extends BaseService {
       (error) => databaseError('updateImagesRevealed', String(error))
     );
   }
+
+  /**
+   * Give up on a challenge
+   * Marks the challenge as game over without solving it
+   * Resets the user's streak
+   */
+  async giveUpChallenge(userId: string, challengeId: string): Promise<Result<{ success: boolean; message: string }, AppError>> {
+    return tryCatch(
+      async () => {
+        // Get or create attempt record
+        let attemptResult = await this.attemptRepo.findByUserAndChallenge(userId, challengeId);
+
+        if (!isOk(attemptResult)) {
+          throw new Error(`Failed to find attempt: ${JSON.stringify(attemptResult.error)}`);
+        }
+
+        let attempt = attemptResult.value;
+
+        if (!attempt) {
+          const recordResult = await this.recordAttempt(userId, challengeId);
+          if (!isOk(recordResult)) {
+            throw new Error(`Failed to record attempt: ${JSON.stringify(recordResult.error)}`);
+          }
+
+          attemptResult = await this.attemptRepo.findByUserAndChallenge(userId, challengeId);
+          if (!isOk(attemptResult)) {
+            throw new Error(`Failed to find attempt after creation: ${JSON.stringify(attemptResult.error)}`);
+          }
+
+          attempt = attemptResult.value;
+          if (!attempt) {
+            return { success: false, message: 'Failed to record attempt' };
+          }
+        }
+
+        // Check if already solved or game over
+        if (attempt.is_solved) {
+          return { success: false, message: 'Challenge already completed' };
+        }
+
+        if (attempt.game_over) {
+          return { success: false, message: 'Challenge already given up' };
+        }
+
+        // Mark as game over
+        const updateResult = await this.attemptRepo.updateAttempt(attempt.id, {
+          game_over: true,
+          completed_at: new Date().toISOString(),
+        });
+
+        if (!isOk(updateResult)) {
+          throw new Error(`Failed to update attempt: ${JSON.stringify(updateResult.error)}`);
+        }
+
+        // Reset user's streak
+        const resetResult = await this.userService.resetStreak(userId);
+        if (!isOk(resetResult)) {
+          this.logError('AttemptService.giveUpChallenge', resetResult.error);
+        }
+
+        this.logInfo('AttemptService', `User ${userId} gave up on challenge ${challengeId}`);
+
+        return { success: true, message: 'Challenge given up successfully' };
+      },
+      (error) => internalError('Failed to give up challenge', error)
+    );
+  }
 }

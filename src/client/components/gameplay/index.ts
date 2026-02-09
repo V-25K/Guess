@@ -18,6 +18,9 @@ export type { FeedbackBubbleProps } from './FeedbackBubble';
 export { HintConfirmDialog } from './HintConfirmDialog';
 export type { HintConfirmDialogProps } from './HintConfirmDialog';
 
+export { GiveUpConfirmDialog } from './GiveUpConfirmDialog';
+export type { GiveUpConfirmDialogProps } from './GiveUpConfirmDialog';
+
 export { HintDescriptionOverlay } from './HintDescriptionOverlay';
 export type { HintDescriptionOverlayProps } from './HintDescriptionOverlay';
 

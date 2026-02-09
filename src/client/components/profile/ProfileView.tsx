@@ -7,16 +7,18 @@ import React, { useEffect, useState } from 'react';
 import { LoadingView } from '../shared/LoadingView';
 import { ErrorView } from '../shared/ErrorView';
 import { StatsGrid, StatItem } from './StatsGrid';
+import { Avatar } from '../shared/Avatar';
 import { apiClient } from '../../api/client';
 import { getExpForLevel } from '../../../shared/utils/level-calculator';
-import type { UserProfile } from '../../../shared/models/user.types';
+import type { AnyUserProfile } from '../../../shared/models/user.types';
+import { isGuestProfile } from '../../../shared/models/user.types';
 
 export interface ProfileViewProps {
   onBack?: () => void;
 }
 
 export function ProfileView({ onBack }: ProfileViewProps) {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profile, setProfile] = useState<AnyUserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -28,7 +30,9 @@ export function ProfileView({ onBack }: ProfileViewProps) {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiClient.getUserProfile();
+      // Use getCurrentUserProfile which works for both authenticated and guest users
+      // without triggering authentication popups
+      const data = await apiClient.getCurrentUserProfile();
       setProfile(data);
     } catch (err) {
       console.error('Error fetching profile:', err);
@@ -64,6 +68,12 @@ export function ProfileView({ onBack }: ProfileViewProps) {
   }
   const currentLevelExp = profile.total_experience - totalExpForCurrentLevel;
   const progressPercentage = Math.min((currentLevelExp / expForNextLevel) * 100, 100);
+
+  // Check if this is a guest user
+  const isGuest = isGuestProfile(profile);
+  
+  // Get avatar source - guest users don't have avatar_url
+  const avatarSrc = isGuest ? undefined : profile.avatar_url;
 
   // Build stats array for StatsGrid
   const stats: StatItem[] = [
@@ -119,26 +129,25 @@ export function ProfileView({ onBack }: ProfileViewProps) {
     <div className="flex flex-col p-3 pb-3 gap-3 w-full h-full min-h-0 bg-[#FFF8F0] dark:bg-[#0f1419] overflow-hidden">
       {/* Header Card - Username & Level */}
       <div className="flex flex-row items-center text-left gap-3 w-full p-3 bg-white dark:bg-[#1a2332] rounded-xl border border-neutral-200 dark:border-white/[0.08] flex-shrink-0">
-        {profile.avatar_url ? (
-          <img
-            src={profile.avatar_url}
-            alt={`${profile.username}'s profile avatar`}
-            className="w-14 h-14 rounded-full flex-shrink-0 object-cover"
-          />
-        ) : (
-          <div
-            className="text-[32px] w-14 h-14 flex items-center justify-center bg-neutral-100 dark:bg-[#243044] rounded-full flex-shrink-0"
-            role="img"
-            aria-label={`${profile.username}'s default avatar`}
-          >
-            👤
-          </div>
-        )}
+        <Avatar
+          src={avatarSrc}
+          alt={`${profile.username}'s profile avatar`}
+          size="xl"
+          fallbackInitials={isGuest ? "👤" : undefined}
+          className={isGuest ? "bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/30 dark:to-blue-800/30 text-blue-600 dark:text-blue-400" : ""}
+        />
 
         <div className="flex-1 flex flex-col items-start gap-1">
-          <h2 className="text-xl font-extrabold text-neutral-900 dark:text-white/95 m-0 leading-tight">
-            {profile.username}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-extrabold text-neutral-900 dark:text-white/95 m-0 leading-tight">
+              {profile.username}
+            </h2>
+            {isGuest && (
+              <span className="px-2 py-0.5 text-xs font-semibold bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full border border-blue-200 dark:border-blue-700/50">
+                Guest
+              </span>
+            )}
+          </div>
           <div className="flex flex-col items-start gap-0.5 text-sm text-neutral-500 dark:text-white/50 font-medium w-full">
             <span className="text-game-primary dark:text-[#f0d078] font-bold">Level {profile.level}</span>
             
@@ -178,8 +187,11 @@ export function ProfileView({ onBack }: ProfileViewProps) {
       {/* Stats List */}
       <StatsGrid stats={stats} />
 
+      {/* Guest Registration Prompt - Disabled to prevent authentication popups */}
+      {/* Guest users should be able to view their profile without registration prompts */}
+
       <p className="text-xs text-neutral-400 dark:text-white/30 text-center mt-auto py-2 flex-shrink-0">
-        Data refreshes automatically
+        {isGuest ? "Guest progress is saved locally" : "Data refreshes automatically"}
       </p>
     </div>
   );

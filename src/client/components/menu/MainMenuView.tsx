@@ -7,18 +7,23 @@ import React, { useState } from 'react';
 import { formatTimeRemaining } from '../../../shared/utils/date-utils';
 import { HowToPlayModal } from './HowToPlayModal';
 import { apiClient } from '../../api/client';
+import { userAuthService } from '../../services/user-auth.service';
+import { accessControlManager } from '../../services/AccessControlManager';
+import { AccessDeniedPopup, useAccessDeniedPopup } from '../shared/AccessDeniedPopup';
+import { isGuestProfile } from '../../../shared/models/user.types';
+import { SubscriptionButton } from '../shared/SubscriptionButton';
 import type { ViewType } from '../../App';
 
 export interface MainMenuViewProps {
   canCreateChallenge: boolean;
   rateLimitTimeRemaining?: number;
   challengesCount?: number;
-  isMember: boolean;
   userLevel: number;
   isModerator: boolean;
   onNavigate: (view: ViewType, event?: React.MouseEvent) => void;
-  onSubscribe: () => void;
   onShowToast?: (message: string) => void;
+  /** Current user data */
+  user?: any; // Will be typed properly based on the user type from App
   /** Leaderboard preview data - top players (kept for compatibility) */
   leaderboardData?: Array<{ rank: number; username: string; points: number; userId: string }>;
   /** Total number of players for leaderboard (kept for compatibility) */
@@ -40,79 +45,122 @@ export function MainMenuView({
   canCreateChallenge,
   rateLimitTimeRemaining = 0,
   challengesCount = 0,
-  isMember,
   userLevel,
   isModerator,
   onNavigate,
-  onSubscribe,
   onShowToast,
+  user,
 }: MainMenuViewProps) {
   const [showHowToPlay, setShowHowToPlay] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
-  const [isSubscribing, setIsSubscribing] = useState(false);
-  const [hasJoined, setHasJoined] = useState(isMember);
+  const { popupState, showAccessDeniedPopup, hideAccessDeniedPopup } = useAccessDeniedPopup();
 
-  const handleJoinCommunity = async () => {
-    if (hasJoined || isSubscribing) return;
-    
-    setIsSubscribing(true);
+  // Get guest ID for subscription button
+  const guestId = user && isGuestProfile(user) ? user.id : undefined;
+
+  /**
+   * Handle create challenge navigation with access control validation
+   * Requirements: 3.3, 3.4 - Apply access control to menu create button
+   */
+  const handleCreateChallenge = async (event: React.MouseEvent) => {
     try {
-      await apiClient.subscribeToSubreddit();
-      setHasJoined(true);
-      if (onShowToast) {
-        onShowToast('Welcome to the community! 🎉');
-      }
-      onSubscribe(); // Call the original callback for any parent state updates
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to join community';
-      if (onShowToast) {
-        onShowToast(message);
+      // Get current user
+      const currentUser = await userAuthService.getCurrentUser();
+      
+      // Validate access using AccessControlManager
+      const accessResult = accessControlManager.validateCreateAccess(currentUser, 'create_button');
+      
+      if (accessResult.granted) {
+        // Access granted - proceed with additional checks (moderator bypass, level, rate limit)
+        
+        // Moderators bypass all other restrictions
+        if (isModerator) {
+          onNavigate('create', event);
+          return;
+        }
+
+        // Check: Is user level high enough?
+        if (userLevel < REQUIRED_LEVEL) {
+          const levelsNeeded = REQUIRED_LEVEL - userLevel;
+          const message = `Reach Level ${REQUIRED_LEVEL} to create challenges! (${levelsNeeded} level${levelsNeeded > 1 ? 's' : ''} to go)`;
+          if (onShowToast) {
+            onShowToast(message);
+          } else {
+            setCreateError(message);
+            setTimeout(() => setCreateError(null), 4000);
+          }
+          return;
+        }
+
+        // Check: Rate limit (24-hour cooldown)
+        if (!canCreateChallenge) {
+          const timeStr = formatTimeRemaining(rateLimitTimeRemaining);
+          const message = `Challenge cooldown active. Next creation in ${timeStr}`;
+          if (onShowToast) {
+            onShowToast(message);
+          } else {
+            setCreateError(message);
+            setTimeout(() => setCreateError(null), 4000);
+          }
+          return;
+        }
+
+        // All checks passed
+        onNavigate('create', event);
       } else {
-        setCreateError(message);
-        setTimeout(() => setCreateError(null), 4000);
+        // Access denied - show consistent popup
+        showAccessDeniedPopup(accessResult, 'create_button');
       }
-    } finally {
-      setIsSubscribing(false);
+    } catch (error) {
+      console.error('Error checking create access:', error);
+      // Show generic error popup with consistent messaging
+      showAccessDeniedPopup({
+        granted: false,
+        reason: 'PERMISSION_DENIED',
+        message: 'Unable to verify permissions. Please try again.',
+        suggestedActions: ['Try again', 'Return to menu']
+      }, 'create_button');
     }
   };
 
-  const handleCreateChallenge = (event: React.MouseEvent) => {
-    // Moderators bypass all restrictions
-    if (isModerator) {
-      onNavigate('create', event);
-      return;
+  /**
+   * Handle suggested actions from access denied popup
+   * Requirements: 3.6 - Redirect users to appropriate alternative actions
+   */
+  const handleActionSelect = (action: string) => {
+    switch (action) {
+      case 'Log in with your Reddit account':
+        // Redirect to login
+        window.location.href = '/auth/login';
+        break;
+      
+      case 'Continue playing to reach level 3':
+      case 'Play more challenges to level up':
+      case 'Browse existing challenges':
+        // Navigate to gameplay
+        onNavigate('gameplay');
+        break;
+      
+      case 'Check your current level in Profile':
+        // Navigate to profile
+        onNavigate('profile');
+        break;
+      
+      case 'Return to menu':
+        // Stay on menu - just close popup
+        hideAccessDeniedPopup();
+        break;
+      
+      case 'Try again':
+        // Close popup and allow retry
+        hideAccessDeniedPopup();
+        break;
+      
+      default:
+        // Default action - close popup
+        hideAccessDeniedPopup();
+        break;
     }
-
-    // Check: Is user level high enough?
-    if (userLevel < REQUIRED_LEVEL) {
-      const levelsNeeded = REQUIRED_LEVEL - userLevel;
-      const message = `Reach Level ${REQUIRED_LEVEL} to create challenges! (${levelsNeeded} level${levelsNeeded > 1 ? 's' : ''} to go)`;
-      if (onShowToast) {
-        onShowToast(message);
-      } else {
-        // Can't use alert() in sandboxed iframe, show inline message instead
-        setCreateError(message);
-        setTimeout(() => setCreateError(null), 4000);
-      }
-      return;
-    }
-
-    // Check: Rate limit (24-hour cooldown)
-    if (!canCreateChallenge) {
-      const timeStr = formatTimeRemaining(rateLimitTimeRemaining);
-      const message = `Challenge cooldown active. Next creation in ${timeStr}`;
-      if (onShowToast) {
-        onShowToast(message);
-      } else {
-        // Can't use alert() in sandboxed iframe, show inline message instead
-        setCreateError(message);
-        setTimeout(() => setCreateError(null), 4000);
-      }
-      return;
-    }
-
-    // All checks passed
-    onNavigate('create', event);
   };
 
   // Determine play button state
@@ -225,35 +273,32 @@ export function MainMenuView({
 
       {/* Footer - Join Community Button */}
       <div className="p-4 flex justify-end relative z-10">
-        <button
-          onClick={handleJoinCommunity}
-          disabled={hasJoined || isSubscribing}
+        <SubscriptionButton
+          guestId={guestId}
+          hasUser={!!user}
           className="px-5 py-2 rounded-lg bg-neutral-100 dark:bg-white/10 border border-neutral-300 dark:border-white/30 text-neutral-700 dark:text-white font-semibold text-sm hover:bg-neutral-200 dark:hover:bg-white/20 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          data-testid="subscribe-button"
-        >
-          {isSubscribing ? (
-            <>
-              <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              Joining...
-            </>
-          ) : hasJoined ? (
-            <>
-              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-              </svg>
-              Joined
-            </>
-          ) : (
-            'Join the community'
-          )}
-        </button>
+          onSubscriptionChange={(isSubscribed) => {
+            if (isSubscribed && onShowToast) {
+              onShowToast('Welcome to the community! 🎉');
+            }
+          }}
+          showToast={true} // Enable toast notifications
+        />
       </div>
 
       {/* How to Play Modal */}
       <HowToPlayModal isOpen={showHowToPlay} onClose={() => setShowHowToPlay(false)} />
+
+      {/* Access Denied Popup */}
+      {popupState.accessResult && popupState.entryPoint && (
+        <AccessDeniedPopup
+          isVisible={popupState.isVisible}
+          accessResult={popupState.accessResult}
+          entryPoint={popupState.entryPoint}
+          onDismiss={hideAccessDeniedPopup}
+          onActionSelect={handleActionSelect}
+        />
+      )}
     </div>
   );
 }

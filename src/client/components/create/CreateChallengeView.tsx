@@ -5,7 +5,7 @@
  * Flow: Form → AI generates answers → Review page → Edit/Confirm → Submit
  */
 
-import React, { useState, FormEvent } from 'react';
+import React, { useState, FormEvent, useEffect } from 'react';
 import { apiClient } from '../../api/client';
 import type { ChallengeCreate } from '../../../shared/models/challenge.types';
 import type { AnswerSetPreview } from '../../api/types';
@@ -14,8 +14,14 @@ import { ChallengeDetailsForm } from './ChallengeDetailsForm';
 import { CreateFormHeader } from './CreateFormHeader';
 import { ImagesSection } from './ImagesSection';
 import { AnswerSetEditor } from './AnswerSetEditor';
+import { GuideExpander } from './GuideExpander';
 import { calculateHintPenalty } from '../../../shared/utils/reward-calculator';
 import { useToast } from '../shared/Toast';
+import { accessControlManager } from '../../services/AccessControlManager';
+import { AccessDeniedPopup, useAccessDeniedPopup } from '../shared/AccessDeniedPopup';
+import { userAuthService } from '../../services/user-auth.service';
+import { uiStateManager } from '../../services/UIStateManager';
+import type { GuideState } from '../../types/navigation.types';
 
 export interface CreateChallengeViewProps {
   onSuccess?: () => void;
@@ -26,6 +32,11 @@ type CreateStep = 'form' | 'preview' | 'submitting';
 
 export function CreateChallengeView({ onSuccess, onCancel }: CreateChallengeViewProps) {
   const { showToast } = useToast();
+  const { popupState, showAccessDeniedPopup, hideAccessDeniedPopup } = useAccessDeniedPopup();
+  
+  // Access control state
+  const [isAccessChecked, setIsAccessChecked] = useState(false);
+  const [hasAccess, setHasAccess] = useState(false);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -51,6 +62,94 @@ export function CreateChallengeView({ onSuccess, onCancel }: CreateChallengeView
 
   // Custom themes state
   const [customThemes, setCustomThemes] = useState<string[]>([]);
+
+  // Guide state management
+  const [guideState, setGuideState] = useState<GuideState>({
+    isExpanded: false,
+    contentLoaded: false,
+    expansionSource: 'create_option'
+  });
+  const [preservedContextId, setPreservedContextId] = useState<string | null>(null);
+
+  /**
+   * Check access control on component mount
+   * Requirements: 3.5 - Validate user permissions before displaying interface elements
+   */
+  useEffect(() => {
+    const checkAccess = async () => {
+      try {
+        const currentUser = await userAuthService.getCurrentUser();
+        const accessResult = accessControlManager.validateCreateAccess(currentUser, 'direct_link');
+        
+        if (accessResult.granted) {
+          setHasAccess(true);
+        } else {
+          showAccessDeniedPopup(accessResult, 'direct_link');
+        }
+      } catch (error) {
+        console.error('Error checking create access:', error);
+        showAccessDeniedPopup({
+          granted: false,
+          reason: 'PERMISSION_DENIED',
+          message: 'Unable to verify permissions. Please try again.',
+          suggestedActions: ['Try again', 'Return to menu']
+        }, 'direct_link');
+      } finally {
+        setIsAccessChecked(true);
+      }
+    };
+
+    checkAccess();
+  }, [showAccessDeniedPopup]);
+
+  /**
+   * Restore guide state on component mount
+   * Requirements: 2.3 - Maintain current page state and user context
+   */
+  useEffect(() => {
+    const savedGuideState = uiStateManager.restoreGuideState('create_guide');
+    if (savedGuideState) {
+      setGuideState(savedGuideState);
+    }
+  }, []);
+
+  /**
+   * Handle suggested actions from access denied popup
+   * Requirements: 3.6 - Redirect users to appropriate alternative actions
+   */
+  const handleActionSelect = (action: string) => {
+    switch (action) {
+      case 'Log in with your Reddit account':
+        window.location.href = '/auth/login';
+        break;
+      
+      case 'Continue playing to reach level 3':
+      case 'Play more challenges to level up':
+      case 'Browse existing challenges':
+        if (onCancel) onCancel();
+        break;
+      
+      case 'Check your current level in Profile':
+        // This would need to be handled by the parent component
+        // For now, just cancel back to menu
+        if (onCancel) onCancel();
+        break;
+      
+      case 'Return to menu':
+        if (onCancel) onCancel();
+        break;
+      
+      case 'Try again':
+        // Refresh page to retry access check
+        window.location.reload();
+        break;
+      
+      default:
+        hideAccessDeniedPopup();
+        if (onCancel) onCancel();
+        break;
+    }
+  };
 
   const toggleTheme = (theme: string) => {
     if (selectedTags.includes(theme)) {
@@ -220,6 +319,106 @@ export function CreateChallengeView({ onSuccess, onCancel }: CreateChallengeView
     }
   };
 
+  /**
+   * Handle guide state changes
+   * Requirements: 2.2, 2.3 - Guide expansion without page refresh and state preservation
+   */
+  const handleGuideStateChange = (newState: GuideState) => {
+    setGuideState(newState);
+    uiStateManager.preserveGuideState('create_guide', newState);
+  };
+
+  /**
+   * Preserve form data when guide is expanded
+   * Requirements: 2.5 - Preserve form data during guide interactions
+   */
+  const handlePreserveFormData = (formData: Record<string, any>) => {
+    const contextId = uiStateManager.preserveFormData('create_challenge', {
+      ...formData,
+      // Add current component state
+      title,
+      answer,
+      answerExplanation,
+      image1,
+      image2,
+      image3,
+      desc1,
+      desc2,
+      desc3,
+      selectedTags,
+      customThemes
+    });
+    setPreservedContextId(contextId);
+  };
+
+  /**
+   * Restore form data when guide is collapsed
+   * Requirements: 2.3 - Maintain current page state and user context
+   */
+  const handleRestoreFormData = (): Record<string, any> | undefined => {
+    if (preservedContextId) {
+      const formData = uiStateManager.getPreservedFormData(preservedContextId);
+      if (formData) {
+        // Restore component state
+        if (formData.title !== undefined) setTitle(formData.title);
+        if (formData.answer !== undefined) setAnswer(formData.answer);
+        if (formData.answerExplanation !== undefined) setAnswerExplanation(formData.answerExplanation);
+        if (formData.image1 !== undefined) setImage1(formData.image1);
+        if (formData.image2 !== undefined) setImage2(formData.image2);
+        if (formData.image3 !== undefined) setImage3(formData.image3);
+        if (formData.desc1 !== undefined) setDesc1(formData.desc1);
+        if (formData.desc2 !== undefined) setDesc2(formData.desc2);
+        if (formData.desc3 !== undefined) setDesc3(formData.desc3);
+        if (formData.selectedTags !== undefined) setSelectedTags(formData.selectedTags);
+        if (formData.customThemes !== undefined) setCustomThemes(formData.customThemes);
+        
+        return formData;
+      }
+    }
+    return undefined;
+  };
+
+  // Show loading while checking access
+  if (!isAccessChecked) {
+    return (
+      <div className="w-full h-full bg-[#FFF8F0] dark:bg-[#0f1419] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-game-primary mx-auto mb-4"></div>
+          <p className="text-neutral-600 dark:text-white/70">Checking permissions...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show access denied state if no access
+  if (!hasAccess) {
+    return (
+      <>
+        <div className="w-full h-full bg-[#FFF8F0] dark:bg-[#0f1419] flex items-center justify-center">
+          <div className="text-center p-8">
+            <div className="text-6xl mb-4">🔒</div>
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white/95 mb-4">
+              Access Restricted
+            </h2>
+            <p className="text-neutral-600 dark:text-white/70 mb-6">
+              Verifying your permissions to create challenges...
+            </p>
+          </div>
+        </div>
+
+        {popupState.accessResult && popupState.entryPoint && (
+          <AccessDeniedPopup
+            isVisible={popupState.isVisible}
+            accessResult={popupState.accessResult}
+            entryPoint={popupState.entryPoint}
+            onDismiss={hideAccessDeniedPopup}
+            onActionSelect={handleActionSelect}
+          />
+        )}
+      </>
+    );
+  }
+
   // Render preview/review step
   if (currentStep === 'preview' || currentStep === 'submitting') {
     return (
@@ -316,6 +515,16 @@ export function CreateChallengeView({ onSuccess, onCancel }: CreateChallengeView
             {message}
           </div>
         )}
+
+        {/* Creator Guide */}
+        <GuideExpander
+          initialExpanded={guideState.isExpanded}
+          expansionSource={guideState.expansionSource}
+          preservedFormData={preservedContextId ? uiStateManager.getPreservedFormData(preservedContextId) : undefined}
+          onStateChange={handleGuideStateChange}
+          onPreserveFormData={handlePreserveFormData}
+          onRestoreFormData={handleRestoreFormData}
+        />
 
         {/* Basic Info */}
         <ChallengeDetailsForm

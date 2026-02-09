@@ -188,20 +188,30 @@ export class ApiError extends Error {
       case ApiErrorCode.TIMEOUT:
         return 'The request took too long. Please try again.';
       case ApiErrorCode.UNAUTHORIZED:
-        return 'You need to be logged in to do this.';
+        return 'Please sign in to continue.';
       case ApiErrorCode.FORBIDDEN:
         return 'You don\'t have permission to do this.';
       case ApiErrorCode.NOT_FOUND:
-        return 'The requested resource was not found.';
+        return 'The requested item was not found.';
       case ApiErrorCode.RATE_LIMITED:
         return 'Too many requests. Please wait a moment and try again.';
       case ApiErrorCode.SERVER_ERROR:
       case ApiErrorCode.SERVICE_UNAVAILABLE:
-        return 'Something went wrong on our end. Please try again later.';
+        return 'Something went wrong. Please try again later.';
+      case ApiErrorCode.BAD_REQUEST:
+        // Check if it's an authentication-related validation error
+        if (this.message.includes('sign in') || this.message.includes('guest profile')) {
+          return this.message; // Use the specific message from server
+        }
+        return 'Please check your input and try again.';
       case ApiErrorCode.VALIDATION_ERROR:
-        return this.message || 'Invalid input. Please check your data.';
+        // Check if it's an authentication-related validation error
+        if (this.message.includes('sign in') || this.message.includes('guest profile')) {
+          return this.message; // Use the specific message from server
+        }
+        return this.message || 'Please check your input and try again.';
       default:
-        return this.message || 'An unexpected error occurred.';
+        return this.message || 'Something went wrong. Please try again.';
     }
   }
 

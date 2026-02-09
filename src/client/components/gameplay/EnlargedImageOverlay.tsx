@@ -66,19 +66,40 @@ export const EnlargedImageOverlay: React.FC<EnlargedImageOverlayProps> = ({
       >
         ✕
       </button>
-      <img
-        src={image.url}
+      {/* 1:1 aspect ratio container for consistent display */}
+      <div
         style={{
-          maxWidth: '100%',
-          maxHeight: '70%',
-          objectFit: 'contain',
-          borderRadius: '8px',
+          width: 'min(80vw, 80vh, 400px)',
+          height: 'min(80vw, 80vh, 400px)',
+          backgroundColor: 'rgba(255, 255, 255, 0.1)',
+          borderRadius: '12px',
           boxShadow: '0 8px 24px rgba(0, 0, 0, 0.4)',
+          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}
-        alt="Enlarged challenge image"
-      />
-      <p style={{ color: 'rgba(255, 255, 255, 0.6)', marginTop: '16px', fontSize: '14px' }}>
-        Tap anywhere to close
+        onClick={(e) => e.stopPropagation()}
+      >
+        <img
+          src={image.url}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+          }}
+          alt="Enlarged challenge image"
+        />
+      </div>
+      <p style={{ 
+        color: 'rgba(255, 255, 255, 0.8)', 
+        marginTop: '16px', 
+        fontSize: '14px',
+        textAlign: 'center',
+        maxWidth: '300px',
+        lineHeight: '1.4'
+      }}>
+        Tap anywhere to close • Use hint mode to reveal image descriptions
       </p>
     </div>
   );

@@ -135,6 +135,8 @@ Level thresholds use linear growth: `50 × level` per level increment
 
 Rate limit: 1 challenge per 24 hours
 
+📋 **[Creator Guidelines](https://github.com/V-25K/Guess/blob/main/docs/CREATOR_GUIDELINES.md)** - Best practices for creating engaging, fair challenges
+
 ## Themes
 
 🎌 Anime • 🌐 General • ⚽ Sport • 🎬 Movies • 🎵 Music • 🎮 Gaming • 📜 History • 🔬 Science • 🗺️ Geography • 🍕 Food • 🎨 Art • 💻 Technology
@@ -213,9 +215,9 @@ This is the inaugural version of Linkaroo, bringing image-based puzzle gaming to
 
 ## 📄 Legal
 
-- [Terms of Service](TERMS_OF_SERVICE.md)
-- [Privacy Policy](PRIVACY_POLICY.md)
-- [Compliance Audit](docs/COMPLIANCE_AUDIT.md)
+- [Terms of Service](https://github.com/V-25K/Guess/blob/main/TERMS_OF_SERVICE.md)
+- [Privacy Policy](https://github.com/V-25K/Guess/blob/main/PRIVACY_POLICY.md)
+- [Compliance Audit](https://github.com/V-25K/Guess/blob/main/docs/COMPLIANCE_AUDIT.md)
 
 ## 🏗️ Architecture & Development
 
@@ -257,7 +259,7 @@ src/server/
 
 The app uses Tailwind CSS for styling with a comprehensive configuration in `src/client/tailwind.config.ts`.
 
-See `docs/diagrams/` for architecture diagrams.
+See [architecture diagrams](https://github.com/V-25K/Guess/tree/main/docs/diagrams) for detailed system design.
 
 ### Performance & Scalability
 
@@ -280,7 +282,7 @@ See `docs/diagrams/` for architecture diagrams.
 
 ## 📜 License
 
-This project is licensed under the BSD-3-Clause License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the BSD-3-Clause License - see the [LICENSE](https://github.com/V-25K/Guess/blob/main/LICENSE) file for details.
 
 ### Third-Party Licenses
 

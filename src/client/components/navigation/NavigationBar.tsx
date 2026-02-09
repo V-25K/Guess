@@ -8,6 +8,10 @@ import { clsx } from 'clsx';
 import type { ViewType } from '../../types/game.types.js';
 import type { ViewMode } from '../../hooks/useViewMode.js';
 import { HomeIcon, ProfileIcon, LeaderboardIcon, AwardsIcon, CreateIcon } from './NavIcons';
+import { accessControlManager } from '../../services/AccessControlManager';
+import { AccessDeniedPopup, useAccessDeniedPopup } from '../shared/AccessDeniedPopup';
+import { userAuthService } from '../../services/user-auth.service';
+import { getNavigationItemClasses, NAVIGATION_STYLES } from '../../utils/ui-consistency';
 
 export interface NavigationBarProps {
   currentView: ViewType;
@@ -23,11 +27,85 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
   onNavigate,
   viewMode,
 }) => {
+  const { popupState, showAccessDeniedPopup, hideAccessDeniedPopup } = useAccessDeniedPopup();
+
   const isActive = (view: ViewType | ViewType[]) => {
     if (Array.isArray(view)) {
       return view.includes(currentView);
     }
     return currentView === view;
+  };
+
+  /**
+   * Handle create navigation with access control validation
+   * Requirements: 3.3, 3.4 - Apply access control to navigation tab create access
+   */
+  const handleCreateNavigation = async (event: React.MouseEvent) => {
+    try {
+      // Get current user
+      const currentUser = await userAuthService.getCurrentUser();
+      
+      // Validate access using AccessControlManager
+      const accessResult = accessControlManager.validateCreateAccess(currentUser, 'navigation_tab');
+      
+      if (accessResult.granted) {
+        // Access granted - proceed with navigation
+        onNavigate('create', event);
+      } else {
+        // Access denied - show consistent popup
+        showAccessDeniedPopup(accessResult, 'navigation_tab');
+      }
+    } catch (error) {
+      console.error('Error checking create access:', error);
+      // Show generic error popup with consistent messaging
+      showAccessDeniedPopup({
+        granted: false,
+        reason: 'PERMISSION_DENIED',
+        message: 'Unable to verify permissions. Please try again.',
+        suggestedActions: ['Try again', 'Refresh page', 'Return to menu']
+      }, 'navigation_tab');
+    }
+  };
+
+  /**
+   * Handle suggested actions from access denied popup
+   * Requirements: 3.6 - Redirect users to appropriate alternative actions
+   */
+  const handleActionSelect = (action: string) => {
+    switch (action) {
+      case 'Log in with your Reddit account':
+        // Redirect to login - this would typically be handled by the auth service
+        window.location.href = '/auth/login';
+        break;
+      
+      case 'Continue playing to reach level 3':
+      case 'Play more challenges to level up':
+      case 'Browse existing challenges':
+        // Navigate to menu/gameplay
+        onNavigate('menu');
+        break;
+      
+      case 'Check your current level in Profile':
+        // Navigate to profile
+        onNavigate('profile');
+        break;
+      
+      case 'Return to menu':
+        // Navigate to menu
+        onNavigate('menu');
+        break;
+      
+      case 'Refresh the page':
+      case 'Try again':
+        // Refresh page
+        window.location.reload();
+        break;
+      
+      default:
+        // Default action - close popup
+        hideAccessDeniedPopup();
+        break;
+    }
   };
 
   // Requirement 1.1: Hide navigation bar when in inline mode
@@ -41,57 +119,15 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
   }
 
   // Base styles for nav items - touch-friendly 48x48px (exceeds 44px minimum)
-  const navItemBaseStyles = clsx(
-    // Layout
-    'flex items-center justify-center',
-    // Size - touch-friendly (44x44px minimum)
-    'w-12 h-12 min-w-touch min-h-touch',
-    // Shape
-    'rounded-xl',
-    // Reset button styles
-    'border-none bg-transparent',
-    // Cursor
-    'cursor-pointer',
-    // Transition
-    'transition-all duration-200 motion-reduce:transition-none',
-    // Focus styles for accessibility
-    'focus:outline-none focus:ring-2 focus:ring-game-primary dark:focus:ring-[#f0d078] focus:ring-offset-2 dark:focus:ring-offset-[#1a2332]'
-  );
+  const navItemBaseStyles = NAVIGATION_STYLES.itemBase;
 
   const getNavItemStyles = (active: boolean) =>
-    clsx(
-      navItemBaseStyles,
-      // Light mode styles
-      active
-        ? 'text-game-primary bg-game-primary/10'
-        : 'text-neutral-500 hover:text-game-primary hover:bg-neutral-100',
-      // Dark mode styles
-      active
-        ? 'dark:text-[#f0d078] dark:bg-[#f0d078]/15'
-        : 'dark:text-white/50 dark:hover:text-[#f0d078] dark:hover:bg-white/[0.08]'
-    );
+    getNavigationItemClasses(active);
 
   // Requirement 1.2: Show navigation bar in expanded mode for Profile, Leaderboard, Awards, Create
   return (
     <nav
-      className={clsx(
-        // Layout
-        'flex justify-around items-center',
-        // Background - elevated surface
-        'bg-white dark:bg-[#1a2332]',
-        // Border
-        'border-t border-neutral-200 dark:border-white/[0.08]',
-        // Padding
-        'px-4 py-2',
-        // Position
-        'fixed bottom-0 left-0 w-full',
-        // Z-index
-        'z-[1000]',
-        // Height
-        'h-[60px]',
-        // Shadow
-        'shadow-[0_-4px_20px_rgba(0,0,0,0.08)] dark:shadow-[0_-4px_20px_rgba(0,0,0,0.4)]'
-      )}
+      className={NAVIGATION_STYLES.container}
       role="navigation"
       aria-label="Main navigation"
     >
@@ -119,7 +155,7 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
 
       <button
         className={getNavItemStyles(isActive('create'))}
-        onClick={(e) => onNavigate('create', e)}
+        onClick={handleCreateNavigation}
         aria-label="Create Challenge"
         aria-current={isActive('create') ? 'page' : undefined}
         title="Create"
@@ -149,6 +185,17 @@ export const NavigationBar: React.FC<NavigationBarProps> = ({
       >
         <AwardsIcon />
       </button>
+
+      {/* Access Denied Popup */}
+      {popupState.accessResult && popupState.entryPoint && (
+        <AccessDeniedPopup
+          isVisible={popupState.isVisible}
+          accessResult={popupState.accessResult}
+          entryPoint={popupState.entryPoint}
+          onDismiss={hideAccessDeniedPopup}
+          onActionSelect={handleActionSelect}
+        />
+      )}
     </nav>
   );
 };

@@ -22,6 +22,8 @@ export interface FeedbackBubbleProps {
   previousProfile?: UserProfile | null;
   /** User profile after this attempt */
   currentProfile?: UserProfile | null;
+  /** Whether the creator is a guest user */
+  isCreatorGuest?: boolean;
 }
 
 /** Get newly unlocked badges by comparing before/after profiles */
@@ -48,6 +50,7 @@ export const FeedbackBubble: React.FC<FeedbackBubbleProps> = ({
   reward,
   previousProfile,
   currentProfile,
+  isCreatorGuest = false,
 }) => {
   const getBubbleStatusClasses = () => {
     if (isCorrect) return 'bg-green-50 dark:bg-green-500/10 border-green-200 dark:border-green-500/20';
@@ -67,6 +70,9 @@ export const FeedbackBubble: React.FC<FeedbackBubbleProps> = ({
   const newBadges = isCorrect ? getNewlyUnlockedBadges(previousProfile, currentProfile) : [];
   const hasRewards = isCorrect && reward && (reward.totalPoints || reward.bonuses?.length);
 
+  // Determine if creator username indicates guest user
+  const isGuestCreator = isCreatorGuest || creatorUsername.startsWith('guest_');
+
   return (
     <div className={`w-full flex items-start flex-shrink-0 ${compact ? 'max-w-[280px] gap-2' : 'max-w-[360px] gap-3'}`}>
       {creatorAvatarUrl ? (
@@ -77,11 +83,15 @@ export const FeedbackBubble: React.FC<FeedbackBubbleProps> = ({
         />
       ) : (
         <div
-          className={`flex-shrink-0 ${avatarSize} rounded-full flex items-center justify-center bg-[#f0d078] text-[#1a2332] font-bold ${avatarTextSize}`}
+          className={`flex-shrink-0 ${avatarSize} rounded-full flex items-center justify-center font-bold ${avatarTextSize} ${
+            isGuestCreator 
+              ? 'bg-gradient-to-br from-blue-100 to-blue-200 dark:from-blue-900/30 dark:to-blue-800/30 text-blue-600 dark:text-blue-400' 
+              : 'bg-[#f0d078] text-[#1a2332]'
+          }`}
           role="img"
           aria-label={`${creatorUsername}'s avatar`}
         >
-          {creatorUsername.charAt(0).toUpperCase()}
+          {isGuestCreator ? '👤' : creatorUsername.charAt(0).toUpperCase()}
         </div>
       )}
       <div className="flex-1 flex flex-col gap-0.5">

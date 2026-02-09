@@ -5,7 +5,7 @@
  * Requirements: 6.4 - Define typed interfaces for all game state objects
  */
 
-import type { UserProfile } from '../../shared/models/user.types';
+import type { AnyUserProfile } from '../../shared/models/user.types';
 import type { GameChallenge } from '../../shared/models/challenge.types';
 import type { AttemptResult } from '../../shared/models/attempt.types';
 
@@ -82,8 +82,8 @@ export interface GameState {
   /** Current view being displayed */
   currentView: ViewType;
   
-  /** Authenticated user profile */
-  user: UserProfile | null;
+  /** User profile (authenticated or guest) */
+  user: AnyUserProfile | null;
   
   /** List of available challenges */
   challenges: GameChallenge[];
@@ -117,7 +117,7 @@ export type GameAction =
   | { type: 'NAVIGATE_TO_MENU' }
   
   // User actions
-  | { type: 'SET_USER'; payload: UserProfile | null }
+  | { type: 'SET_USER'; payload: AnyUserProfile | null }
   | { type: 'SET_USER_LOADING'; payload: boolean }
   | { type: 'SET_USER_ERROR'; payload: string | null }
   

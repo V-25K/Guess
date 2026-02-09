@@ -63,20 +63,22 @@ export function HintDescriptionOverlay({
         className="dark:!bg-[#1a2332]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Image */}
+        {/* Image - 1:1 aspect ratio container for consistency */}
         <div 
           style={{
             position: 'relative',
             width: '100%',
             aspectRatio: '1',
             backgroundColor: '#f5f5f5',
+            borderRadius: '8px',
+            overflow: 'hidden',
           }}
           className="dark:!bg-[#243044]"
         >
           <img
             src={image.url}
             alt={`Challenge image ${imageIndex + 1}`}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
           />
         </div>
 

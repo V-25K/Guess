@@ -98,6 +98,13 @@
         "endpoint": "/internal/admin/cleanup-user"
       },
       {
+        "label": "Database Cleanup",
+        "description": "Manually trigger database cleanup to remove old data and optimize performance",
+        "location": "subreddit",
+        "forUserType": "moderator",
+        "endpoint": "/internal/admin/database-cleanup"
+      },
+      {
         "label": "Open Profile",
         "location": "post",
         "endpoint": "/internal/menu/open-profile"
@@ -128,6 +135,10 @@
       "leaderboard-refresh": {
         "endpoint": "/internal/scheduler/leaderboard-refresh",
         "cron": "*/10 * * * *"
+      },
+      "database-cleanup": {
+        "endpoint": "/internal/scheduler/database-cleanup",
+        "cron": "0 2 * * *"
       },
       "user-data-cleanup": {
         "endpoint": "/internal/scheduler/user-data-cleanup",

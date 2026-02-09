@@ -411,6 +411,281 @@ export const revealHintSchema = z.object({
   }),
 });
 
+/**
+ * Give up challenge schema
+ * 
+ * Validates data for giving up on a challenge.
+ * This is used for the POST /api/attempts/giveup endpoint.
+ * 
+ * Fields:
+ * - challengeId: UUID of the challenge to give up on
+ * 
+ * @example
+ * giveUpChallengeSchema.parse({
+ *   body: {
+ *     challengeId: '550e8400-e29b-41d4-a716-446655440000'
+ *   }
+ * }) // ✓ Valid
+ * 
+ * giveUpChallengeSchema.parse({
+ *   body: {
+ *     challengeId: 'not-a-uuid'
+ *   }
+ * }) // ✗ Invalid: not a valid UUID
+ */
+export const giveUpChallengeSchema = z.object({
+  body: z.object({
+    challengeId: uuidSchema,
+  }),
+});
+
+/**
+ * Guest User ID schema
+ * 
+ * Validates guest user identifiers.
+ * Guest IDs must start with "guest_" or "anon_" prefix and be non-empty strings.
+ * 
+ * @example
+ * guestIdSchema.parse('guest_123abc') // ✓ Valid
+ * guestIdSchema.parse('anon_xyz789') // ✓ Valid
+ * guestIdSchema.parse('user123') // ✗ Invalid: doesn't start with guest_ or anon_
+ * guestIdSchema.parse('guest_') // ✗ Invalid: too short
+ */
+export const guestIdSchema = z.string().min(7).max(100).refine(
+  (val) => val.startsWith('guest_') || val.startsWith('anon_'),
+  { message: 'Guest ID must start with "guest_" or "anon_"' }
+);
+
+/**
+ * Guest profile creation schema
+ * 
+ * Validates data for creating a new guest user profile.
+ * This is used for the POST /api/guest/profile endpoint.
+ * 
+ * Fields:
+ * - id: Guest user ID (must start with "guest_")
+ * - username: Guest username (must start with "guest_")
+ * - total_points: Initial points (default: 0)
+ * - total_experience: Initial experience (default: 0)
+ * - level: Initial level (default: 1)
+ * - challenges_created: Initial challenges created (default: 0)
+ * - challenges_attempted: Initial challenges attempted (default: 0)
+ * - challenges_solved: Initial challenges solved (default: 0)
+ * - current_streak: Initial current streak (default: 0)
+ * - best_streak: Initial best streak (default: 0)
+ * - last_challenge_created_at: Last challenge creation time (optional)
+ * - role: User role (must be 'player' for guests)
+ * 
+ * @example
+ * createGuestProfileSchema.parse({
+ *   body: {
+ *     id: 'guest_abc123',
+ *     username: 'guest_abc123',
+ *     total_points: 0,
+ *     level: 1,
+ *     role: 'player'
+ *   }
+ * }) // ✓ Valid
+ */
+export const createGuestProfileSchema = z.object({
+  body: z.object({
+    id: guestIdSchema,
+    username: z.string().min(7).max(50).refine(
+      (val) => val.startsWith('guest_'),
+      { message: 'Guest username must start with "guest_"' }
+    ),
+    total_points: z.number().int().nonnegative().default(0),
+    total_experience: z.number().int().nonnegative().default(0),
+    level: z.number().int().min(1).default(1),
+    challenges_created: z.number().int().nonnegative().default(0),
+    challenges_attempted: z.number().int().nonnegative().default(0),
+    challenges_solved: z.number().int().nonnegative().default(0),
+    current_streak: z.number().int().nonnegative().default(0),
+    best_streak: z.number().int().nonnegative().default(0),
+    last_challenge_created_at: z.string().nullable().optional(),
+    role: z.literal('player'),
+  }),
+});
+
+/**
+ * Guest profile retrieval schema
+ * 
+ * Validates parameters for retrieving a guest user profile.
+ * 
+ * Fields:
+ * - guestId: Guest user ID (must start with "guest_")
+ * 
+ * @example
+ * getGuestProfileSchema.parse({
+ *   params: {
+ *     guestId: 'guest_abc123'
+ *   }
+ * }) // ✓ Valid
+ */
+export const getGuestProfileSchema = z.object({
+  params: z.object({
+    guestId: guestIdSchema,
+  }),
+});
+
+/**
+ * Guest profile update schema
+ * 
+ * Validates data for updating a guest user profile.
+ * At least one field must be provided for the update.
+ * 
+ * Fields:
+ * - username: Guest username (must start with "guest_", optional)
+ * - total_points: Total points (non-negative, optional)
+ * - total_experience: Total experience (non-negative, optional)
+ * - level: User level (min 1, optional)
+ * - challenges_created: Challenges created count (non-negative, optional)
+ * - challenges_attempted: Challenges attempted count (non-negative, optional)
+ * - challenges_solved: Challenges solved count (non-negative, optional)
+ * - current_streak: Current streak (non-negative, optional)
+ * - best_streak: Best streak (non-negative, optional)
+ * - last_challenge_created_at: Last challenge creation time (optional)
+ * - role: User role (must be 'player', optional)
+ * 
+ * @example
+ * updateGuestProfileSchema.parse({
+ *   params: { guestId: 'guest_abc123' },
+ *   body: { total_points: 100, level: 2 }
+ * }) // ✓ Valid
+ */
+export const updateGuestProfileSchema = z.object({
+  params: z.object({
+    guestId: guestIdSchema,
+  }),
+  body: z.object({
+    username: z.string().min(7).max(50).refine(
+      (val) => val.startsWith('guest_'),
+      { message: 'Guest username must start with "guest_"' }
+    ).optional(),
+    total_points: z.number().int().nonnegative().optional(),
+    total_experience: z.number().int().nonnegative().optional(),
+    level: z.number().int().min(1).optional(),
+    challenges_created: z.number().int().nonnegative().optional(),
+    challenges_attempted: z.number().int().nonnegative().optional(),
+    challenges_solved: z.number().int().nonnegative().optional(),
+    current_streak: z.number().int().nonnegative().optional(),
+    best_streak: z.number().int().nonnegative().optional(),
+    last_challenge_created_at: z.string().nullable().optional(),
+    role: z.literal('player').optional(),
+  }).refine(
+    (data) => Object.keys(data).length > 0,
+    { message: 'At least one field must be provided' }
+  ),
+});
+
+/**
+ * Guest guess submission schema
+ * 
+ * Validates data for submitting a guess to a challenge as a guest user.
+ * 
+ * Fields:
+ * - challengeId: UUID of the challenge being attempted
+ * - guess: The guest user's guess (1-200 chars, trimmed for XSS prevention)
+ * - guestId: Guest user ID (must start with "guest_")
+ * 
+ * @example
+ * submitGuestGuessSchema.parse({
+ *   body: {
+ *     challengeId: '550e8400-e29b-41d4-a716-446655440000',
+ *     guess: 'Paris',
+ *     guestId: 'guest_abc123'
+ *   }
+ * }) // ✓ Valid
+ */
+export const submitGuestGuessSchema = z.object({
+  body: z.object({
+    challengeId: uuidSchema,
+    guess: z.string().min(1).max(200).refine(
+      (val) => val.trim().length > 0,
+      { message: 'Guess cannot be empty or only whitespace' }
+    ).transform((val) => val.trim()),
+    guestId: guestIdSchema,
+  }),
+});
+
+/**
+ * Guest attempt retrieval schema
+ * 
+ * Validates parameters for retrieving a guest user's attempt for a specific challenge.
+ * 
+ * Fields:
+ * - challengeId: UUID of the challenge
+ * - guestId: Guest user ID (must start with "guest_")
+ * 
+ * @example
+ * getGuestAttemptSchema.parse({
+ *   params: {
+ *     challengeId: '550e8400-e29b-41d4-a716-446655440000',
+ *     guestId: 'guest_abc123'
+ *   }
+ * }) // ✓ Valid
+ */
+export const getGuestAttemptSchema = z.object({
+  params: z.object({
+    challengeId: uuidSchema,
+    guestId: guestIdSchema,
+  }),
+});
+
+/**
+ * Guest hint reveal schema
+ * 
+ * Validates data for revealing a hint during gameplay as a guest user.
+ * 
+ * Fields:
+ * - challengeId: UUID of the challenge
+ * - imageIndex: Index of the image to reveal (non-negative integer)
+ * - hintCost: Cost in points to reveal the hint (non-negative integer)
+ * - guestId: Guest user ID (must start with "guest_")
+ * 
+ * @example
+ * revealGuestHintSchema.parse({
+ *   body: {
+ *     challengeId: '550e8400-e29b-41d4-a716-446655440000',
+ *     imageIndex: 0,
+ *     hintCost: 10,
+ *     guestId: 'guest_abc123'
+ *   }
+ * }) // ✓ Valid
+ */
+export const revealGuestHintSchema = z.object({
+  body: z.object({
+    challengeId: uuidSchema,
+    imageIndex: z.number().int().nonnegative(),
+    hintCost: z.number().int().nonnegative(),
+    guestId: guestIdSchema,
+  }),
+});
+
+/**
+ * Guest give up challenge schema
+ * 
+ * Validates data for giving up on a challenge as a guest user.
+ * 
+ * Fields:
+ * - challengeId: UUID of the challenge to give up on
+ * - guestId: Guest user ID (must start with "guest_")
+ * 
+ * @example
+ * giveUpGuestChallengeSchema.parse({
+ *   body: {
+ *     challengeId: '550e8400-e29b-41d4-a716-446655440000',
+ *     guestId: 'guest_abc123'
+ *   }
+ * }) // ✓ Valid
+ */
+export const giveUpGuestChallengeSchema = z.object({
+  body: z.object({
+    challengeId: uuidSchema,
+    guestId: guestIdSchema,
+  }),
+});
+
 // Type inference exports
 export type CreateChallengeInput = z.infer<typeof createChallengeSchema>;
 export type GetChallengeInput = z.infer<typeof getChallengeSchema>;
@@ -419,3 +694,13 @@ export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type FullChallengeCreationInput = z.infer<typeof fullChallengeCreationSchema>;
 export type ChallengePreviewInput = z.infer<typeof challengePreviewSchema>;
 export type RevealHintInput = z.infer<typeof revealHintSchema>;
+export type GiveUpChallengeInput = z.infer<typeof giveUpChallengeSchema>;
+
+// Guest user type inference exports
+export type CreateGuestProfileInput = z.infer<typeof createGuestProfileSchema>;
+export type GetGuestProfileInput = z.infer<typeof getGuestProfileSchema>;
+export type UpdateGuestProfileInput = z.infer<typeof updateGuestProfileSchema>;
+export type SubmitGuestGuessInput = z.infer<typeof submitGuestGuessSchema>;
+export type GetGuestAttemptInput = z.infer<typeof getGuestAttemptSchema>;
+export type RevealGuestHintInput = z.infer<typeof revealGuestHintSchema>;
+export type GiveUpGuestChallengeInput = z.infer<typeof giveUpGuestChallengeSchema>;

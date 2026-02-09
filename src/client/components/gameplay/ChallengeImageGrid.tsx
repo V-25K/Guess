@@ -98,7 +98,7 @@ export const ChallengeImageGrid: React.FC<ChallengeImageGridProps> = ({
             >
               <img
                 src={item.data.url}
-                className="w-full h-full object-cover block"
+                className="w-full h-full object-contain block"
                 alt={item.data.description || `Challenge image ${item.index + 1}`}
               />
               

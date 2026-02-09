@@ -1,10 +1,12 @@
 /**
  * Modal Component
  * Accessible modal dialog with focus trapping
+ * Requirements: 5.1, 5.2, 5.3, 5.4, 5.5 - UI consistency and accessibility standards
  */
 
 import React, { useEffect, useRef, useCallback } from 'react';
 import { trapFocus } from '../../../utils/accessibility';
+import { POPUP_STYLES } from '../../../utils/ui-consistency';
 
 export type ModalSize = 'sm' | 'md' | 'lg';
 
@@ -98,93 +100,35 @@ export function Modal({
 
   if (!isOpen) return null;
 
-  // Size configurations for different screen sizes
-  const modalMaxWidth = size === 'sm' ? 280 : size === 'md' ? 380 : 480;
-
   return (
     <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '16px',
-        boxSizing: 'border-box',
-      }}
+      className={POPUP_STYLES.overlay}
       onClick={handleOverlayClick}
       role="presentation"
     >
       <div
         ref={modalRef}
-        style={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: `${modalMaxWidth}px`,
-          maxHeight: '80%',
-          backgroundColor: 'var(--modal-bg, #ffffff)',
-          borderRadius: '16px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-        className="dark:!bg-[#1a2332]"
+        className={`${POPUP_STYLES.container} ${sizeStyles[size]}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'modal-title' : undefined}
       >
         {title && (
-          <div 
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '16px',
-              padding: '16px 20px',
-              borderBottom: '1px solid rgba(0, 0, 0, 0.1)',
-            }}
-            className="dark:border-white/[0.08]"
-          >
+          <div className={POPUP_STYLES.header}>
             <h2 
               id="modal-title" 
-              style={{
-                margin: 0,
-                fontSize: '18px',
-                fontWeight: 600,
-                lineHeight: 1.3,
-                color: '#171717',
-              }}
-              className="dark:!text-white/95"
+              className={POPUP_STYLES.title}
             >
               {title}
             </h2>
             <button
               type="button"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '32px',
-                height: '32px',
-                padding: 0,
-                border: 'none',
-                borderRadius: '8px',
-                backgroundColor: 'transparent',
-                color: '#737373',
-                cursor: 'pointer',
-              }}
-              className="hover:bg-neutral-100 dark:hover:bg-white/10 dark:text-white/50"
+              className="absolute top-4 right-4 flex items-center justify-center w-8 h-8 rounded-full bg-transparent text-neutral-400 hover:text-neutral-600 hover:bg-neutral-100 dark:text-white/50 dark:hover:text-white/70 dark:hover:bg-white/10 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-game-primary dark:focus:ring-[#f0d078]"
               onClick={onClose}
               aria-label="Close modal"
             >
               <svg
-                style={{ width: '20px', height: '20px' }}
+                className="w-4 h-4"
                 viewBox="0 0 20 20"
                 fill="currentColor"
                 aria-hidden="true"
@@ -198,13 +142,7 @@ export function Modal({
             </button>
           </div>
         )}
-        <div 
-          style={{
-            flex: 1,
-            padding: '20px',
-            overflowY: 'auto',
-          }}
-        >
+        <div className={title ? POPUP_STYLES.content : 'p-6'}>
           {children}
         </div>
       </div>

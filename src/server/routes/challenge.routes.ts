@@ -1,8 +1,8 @@
 /**
  * Challenge API Routes
- * Handles all challenge-related HTTP endpoints
+ * Handles all challenge-related HTTP endpoints for both authenticated and guest users
  * 
- * Requirements: 8.2, 8.3
+ * Requirements: 8.2, 8.3, REQ-4.1, REQ-4.2
  */
 
 import { Router, type Request, type Response } from 'express';
@@ -18,6 +18,7 @@ import {
   paginationSchema, 
   fullChallengeCreationSchema,
   challengePreviewSchema,
+  guestIdSchema,
   type GetChallengeInput,
   type FullChallengeCreationInput,
   type ChallengePreviewInput
@@ -36,8 +37,11 @@ const router = Router();
 
 /**
  * GET /api/challenges
- * List all challenges with optional filters
- * Requirements: 8.2, 8.3
+ * List all challenges with optional filters (accessible to both authenticated and guest users)
+ * Requirements: 8.2, 8.3, REQ-4.1, REQ-4.2
+ * 
+ * Note: Challenge listing is now open to all users (authenticated and guest)
+ * No authentication required for viewing challenges
  */
 router.get('/', rateLimit(RATE_LIMITS['GET /api/challenges']), validateRequest({ query: paginationSchema }), async (req: Request, res: Response) => {
   // Get validated pagination params
@@ -83,8 +87,11 @@ router.get('/', rateLimit(RATE_LIMITS['GET /api/challenges']), validateRequest({
 
 /**
  * GET /api/challenges/:challengeId
- * Get a single challenge by ID
- * Requirements: 8.2, 8.3
+ * Get a single challenge by ID (accessible to both authenticated and guest users)
+ * Requirements: 8.2, 8.3, REQ-4.1, REQ-4.2
+ * 
+ * Note: Challenge viewing is now open to all users (authenticated and guest)
+ * No authentication required for viewing individual challenges
  */
 router.get('/:challengeId', rateLimit(RATE_LIMITS['GET /api/challenges/:id']), validateRequest(getChallengeSchema), async (req: Request, res: Response) => {
   const { challengeId } = (req as ValidatedRequest<GetChallengeInput>).validated.params;
@@ -117,16 +124,19 @@ router.get('/:challengeId', rateLimit(RATE_LIMITS['GET /api/challenges/:id']), v
 
 /**
  * POST /api/challenges
- * Create a new challenge
- * Requirements: 8.2, 8.3
+ * Create a new challenge (authenticated users only, guests cannot create challenges)
+ * Requirements: 8.2, 8.3, REQ-4.2
+ * 
+ * Note: Challenge creation requires authentication - guest users cannot create challenges
+ * This maintains the original authentication requirement for content creation
  */
 router.post('/', rateLimit(RATE_LIMITS['POST /api/challenges']), validateRequest(fullChallengeCreationSchema), async (req: Request, res: Response) => {
   const { userId, username } = context;
   
-  // Validate authentication
+  // Validate authentication - challenge creation requires authenticated user
   if (!userId || !username) {
     return handleResult(err(validationError([
-      { field: 'auth', message: 'User not authenticated' }
+      { field: 'auth', message: 'Authentication required to create challenges' }
     ])), res);
   }
   
@@ -157,16 +167,19 @@ router.post('/', rateLimit(RATE_LIMITS['POST /api/challenges']), validateRequest
 
 /**
  * POST /api/challenges/preview
- * Generate answer set preview for a challenge
- * Requirements: 8.2, 8.3
+ * Generate answer set preview for a challenge (authenticated users only)
+ * Requirements: 8.2, 8.3, REQ-4.2
+ * 
+ * Note: Challenge preview requires authentication - guest users cannot preview challenges
+ * This maintains the original authentication requirement for content creation features
  */
 router.post('/preview', rateLimit(RATE_LIMITS['POST /api/challenges/preview']), validateRequest(challengePreviewSchema), async (req: Request, res: Response) => {
   const { userId, username } = context;
   
-  // Validate authentication
+  // Validate authentication - challenge preview requires authenticated user
   if (!userId || !username) {
     return handleResult(err(validationError([
-      { field: 'auth', message: 'User not authenticated' }
+      { field: 'auth', message: 'Authentication required to preview challenges' }
     ])), res);
   }
   

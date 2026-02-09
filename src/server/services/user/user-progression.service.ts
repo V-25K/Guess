@@ -47,7 +47,7 @@ export class UserProgressionService extends BaseService {
   }
 
   /**
-   * Award points and experience to a user, automatically calculating new level
+   * Award points and experience to a user, automatically calculating new level (works for both regular and anonymous users)
    * This is the core progression mechanic
    * Uses retry logic to ensure points are awarded reliably
    * 
@@ -57,6 +57,12 @@ export class UserProgressionService extends BaseService {
    * Requirements: 2.2
    */
   async awardPoints(userId: string, points: number, experience: number): Promise<Result<boolean, AppError>> {
+    // Check if this is an anonymous user
+    if (userId.startsWith('anon_')) {
+      return this.awardGuestPoints(userId, points, experience);
+    }
+    
+    // Regular user logic
     // Use retry logic for fetching profile
     const profileResult = await this.withRetry(
       () => this.userRepo.findById(userId),
@@ -127,13 +133,19 @@ export class UserProgressionService extends BaseService {
   }
 
   /**
-   * Deduct points from a user's total (for hint purchases)
+   * Deduct points from a user's total (for hint purchases) - works for both regular and anonymous users
    * Similar to awardPoints but with negative value
    * Invalidates profile cache AND updates leaderboard sorted set atomically.
    * 
    * Requirements: 2.3
    */
   async deductPoints(userId: string, points: number): Promise<Result<boolean, AppError>> {
+    // Check if this is an anonymous user
+    if (userId.startsWith('anon_')) {
+      return this.deductGuestPoints(userId, points);
+    }
+    
+    // Regular user logic
     // Use retry logic for fetching profile
     const profileResult = await this.withRetry(
       () => this.userRepo.findById(userId),
@@ -332,9 +344,15 @@ export class UserProgressionService extends BaseService {
   }
 
   /**
-   * Increment challenges attempted count
+   * Increment challenges attempted count (works for both regular and anonymous users)
    */
   async incrementChallengesAttempted(userId: string): Promise<Result<boolean, AppError>> {
+    // Check if this is an anonymous user
+    if (userId.startsWith('anon_')) {
+      return this.incrementGuestChallengesAttempted(userId);
+    }
+    
+    // Regular user logic
     const profileResult = await this.userRepo.findById(userId);
 
     if (!isOk(profileResult)) {
@@ -359,9 +377,15 @@ export class UserProgressionService extends BaseService {
   }
 
   /**
-   * Increment challenges solved count
+   * Increment challenges solved count (works for both regular and anonymous users)
    */
   async incrementChallengesSolved(userId: string): Promise<Result<boolean, AppError>> {
+    // Check if this is an anonymous user
+    if (userId.startsWith('anon_')) {
+      return this.incrementGuestChallengesSolved(userId);
+    }
+    
+    // Regular user logic
     const profileResult = await this.userRepo.findById(userId);
 
     if (!isOk(profileResult)) {
@@ -416,5 +440,355 @@ export class UserProgressionService extends BaseService {
       // Log but don't throw - leaderboard update failures should not crash
       this.logError('UserProgressionService.safeUpdateLeaderboard', error);
     }
+  }
+
+  // ============================================
+  // Guest User Progression Operations
+  // ============================================
+
+  /**
+   * Award points and experience to a guest user, automatically calculating new level
+   * Similar to awardPoints but for guest users
+   * 
+   * Requirements: REQ-2.1, REQ-2.2
+   */
+  async awardGuestPoints(guestId: string, points: number, experience: number): Promise<Result<boolean, AppError>> {
+    // Validate guest ID format
+    if (!guestId || (!guestId.startsWith('guest_') && !guestId.startsWith('anon_'))) {
+      this.logError('UserProgressionService.awardGuestPoints', `Invalid guestId: "${guestId}"`);
+      return err(validationError([{ field: 'guestId', message: 'Invalid guest user ID format' }]));
+    }
+
+    // Use retry logic for fetching profile
+    const profileResult = await this.withRetry(
+      () => this.userRepo.findGuestById(guestId),
+      {
+        maxRetries: 3,
+        exponentialBackoff: true,
+      }
+    );
+
+    if (!isOk(profileResult)) {
+      this.logError('UserProgressionService.awardGuestPoints', profileResult.error);
+      return profileResult;
+    }
+
+    const profile = profileResult.value;
+
+    if (!profile) {
+      this.logError('UserProgressionService.awardGuestPoints', `Guest profile not found for ${guestId}`);
+      return err(databaseError('awardGuestPoints', 'Guest profile not found'));
+    }
+
+    const newTotalPoints = profile.total_points + points;
+    const newTotalExperience = profile.total_experience + experience;
+
+    const newLevel = calculateLevel(newTotalExperience);
+
+    const leveledUp = newLevel > profile.level;
+
+    if (leveledUp) {
+      this.logInfo('UserProgressionService', `Guest ${guestId} leveled up to level ${newLevel}!`);
+    }
+
+    const updateResult = await this.withRetry(
+      () => this.userRepo.updateGuestProfile(guestId, {
+        total_points: newTotalPoints,
+        total_experience: newTotalExperience,
+        level: newLevel,
+      }),
+      {
+        maxRetries: 3,
+        exponentialBackoff: true,
+        onRetry: (attempt, error) => {
+          this.logWarning(
+            'UserProgressionService.awardGuestPoints',
+            `Guest profile update attempt ${attempt} failed`
+          );
+          this.logError('UserProgressionService.awardGuestPoints', error);
+        },
+      }
+    );
+
+    if (!isOk(updateResult)) {
+      return updateResult;
+    }
+
+    if (updateResult.value) {
+      // Invalidate profile cache AND update leaderboard atomically
+      // Both operations must complete before returning
+      await this.invalidateCacheAndUpdateLeaderboard(guestId, points);
+
+      this.logInfo(
+        'UserProgressionService',
+        `Awarded ${points} points and ${experience} exp to guest ${guestId}`
+      );
+    }
+
+    return updateResult;
+  }
+
+  /**
+   * Deduct points from a guest user's total (for hint purchases)
+   * Similar to deductPoints but for guest users
+   * 
+   * Requirements: REQ-2.1, REQ-2.2
+   */
+  async deductGuestPoints(guestId: string, points: number): Promise<Result<boolean, AppError>> {
+    // Validate guest ID format
+    if (!guestId || (!guestId.startsWith('guest_') && !guestId.startsWith('anon_'))) {
+      this.logError('UserProgressionService.deductGuestPoints', `Invalid guestId: "${guestId}"`);
+      return err(validationError([{ field: 'guestId', message: 'Invalid guest user ID format' }]));
+    }
+
+    // Use retry logic for fetching profile
+    const profileResult = await this.withRetry(
+      () => this.userRepo.findGuestById(guestId),
+      {
+        maxRetries: 3,
+        exponentialBackoff: true,
+      }
+    );
+
+    if (!isOk(profileResult)) {
+      this.logError('UserProgressionService.deductGuestPoints', profileResult.error);
+      return profileResult;
+    }
+
+    const profile = profileResult.value;
+
+    if (!profile) {
+      this.logError('UserProgressionService.deductGuestPoints', `Guest profile not found for ${guestId}`);
+      return err(databaseError('deductGuestPoints', 'Guest profile not found'));
+    }
+
+    // Check if guest user has enough points
+    if (profile.total_points < points) {
+      this.logError('UserProgressionService.deductGuestPoints', `Guest ${guestId} has insufficient points: ${profile.total_points} < ${points}`);
+      return err(validationError([{ field: 'points', message: 'Insufficient points' }]));
+    }
+
+    const newTotalPoints = profile.total_points - points;
+
+    const updateResult = await this.withRetry(
+      () => this.userRepo.updateGuestProfile(guestId, {
+        total_points: newTotalPoints,
+      }),
+      {
+        maxRetries: 3,
+        exponentialBackoff: true,
+        onRetry: (attempt, error) => {
+          this.logWarning(
+            'UserProgressionService.deductGuestPoints',
+            `Guest profile update attempt ${attempt} failed`
+          );
+          this.logError('UserProgressionService.deductGuestPoints', error);
+        },
+      }
+    );
+
+    if (!isOk(updateResult)) {
+      return updateResult;
+    }
+
+    if (updateResult.value) {
+      // Invalidate profile cache AND update leaderboard atomically
+      // Use negative delta for leaderboard
+      await this.invalidateCacheAndUpdateLeaderboard(guestId, -points);
+
+      this.logInfo(
+        'UserProgressionService',
+        `Deducted ${points} points from guest ${guestId}. New balance: ${newTotalPoints}`
+      );
+    }
+
+    return updateResult;
+  }
+
+  /**
+   * Get experience required to reach next level for a guest user
+   */
+  async getGuestExpToNextLevel(guestId: string): Promise<Result<number, AppError>> {
+    const profileResult = await this.userRepo.findGuestById(guestId);
+
+    if (!isOk(profileResult)) {
+      this.logError('UserProgressionService.getGuestExpToNextLevel', profileResult.error);
+      return profileResult;
+    }
+
+    const profile = profileResult.value;
+
+    if (!profile) {
+      return ok(0);
+    }
+
+    return ok(getExpToNextLevel(profile.total_experience, profile.level));
+  }
+
+  /**
+   * Increment guest user's streak on successful solve
+   * Returns the new streak value
+   * 
+   * Requirements: REQ-2.1, REQ-2.2
+   */
+  async incrementGuestStreak(guestId: string): Promise<Result<number, AppError>> {
+    const profileResult = await this.userRepo.findGuestById(guestId);
+    
+    if (!isOk(profileResult)) {
+      this.logError('UserProgressionService.incrementGuestStreak', profileResult.error);
+      return profileResult;
+    }
+
+    const profile = profileResult.value;
+    
+    if (!profile) {
+      return ok(0);
+    }
+
+    const newStreak = (profile.current_streak || 0) + 1;
+    const bestStreak = Math.max(profile.best_streak || 0, newStreak);
+
+    const updateResult = await this.userRepo.updateGuestProfile(guestId, {
+      current_streak: newStreak,
+      best_streak: bestStreak,
+    });
+
+    if (!isOk(updateResult)) {
+      return updateResult;
+    }
+
+    await this.cacheService.safeInvalidateCache(guestId);
+    this.logInfo('UserProgressionService', `Guest ${guestId} streak increased to ${newStreak}`);
+
+    return ok(newStreak);
+  }
+
+  /**
+   * Reset guest user's streak on game over (failed challenge)
+   * 
+   * Requirements: REQ-2.1, REQ-2.2
+   */
+  async resetGuestStreak(guestId: string): Promise<Result<void, AppError>> {
+    const profileResult = await this.userRepo.findGuestById(guestId);
+    
+    if (!isOk(profileResult)) {
+      this.logError('UserProgressionService.resetGuestStreak', profileResult.error);
+      return profileResult;
+    }
+
+    const profile = profileResult.value;
+    
+    if (!profile || (profile.current_streak || 0) === 0) {
+      return ok(undefined);
+    }
+
+    const updateResult = await this.userRepo.updateGuestProfile(guestId, {
+      current_streak: 0,
+    });
+
+    if (!isOk(updateResult)) {
+      return updateResult;
+    }
+
+    await this.cacheService.safeInvalidateCache(guestId);
+    this.logInfo('UserProgressionService', `Guest ${guestId} streak reset`);
+
+    return ok(undefined);
+  }
+
+  /**
+   * Get guest user's current streak
+   */
+  async getGuestCurrentStreak(guestId: string): Promise<Result<number, AppError>> {
+    const profileResult = await this.userRepo.findGuestById(guestId);
+    
+    if (!isOk(profileResult)) {
+      this.logError('UserProgressionService.getGuestCurrentStreak', profileResult.error);
+      return profileResult;
+    }
+
+    return ok(profileResult.value?.current_streak || 0);
+  }
+
+  /**
+   * Increment guest challenges created count and update last creation timestamp
+   */
+  async incrementGuestChallengesCreated(guestId: string): Promise<Result<boolean, AppError>> {
+    const profileResult = await this.userRepo.findGuestById(guestId);
+
+    if (!isOk(profileResult)) {
+      return profileResult;
+    }
+
+    const profile = profileResult.value;
+
+    if (!profile) {
+      return err(databaseError('incrementGuestChallengesCreated', 'Guest profile not found'));
+    }
+
+    const updateResult = await this.userRepo.updateGuestProfile(guestId, {
+      challenges_created: profile.challenges_created + 1,
+      last_challenge_created_at: new Date().toISOString(),
+    });
+
+    if (isOk(updateResult) && updateResult.value) {
+      await this.cacheService.safeInvalidateCache(guestId);
+    }
+
+    return updateResult;
+  }
+
+  /**
+   * Increment guest challenges attempted count
+   */
+  async incrementGuestChallengesAttempted(guestId: string): Promise<Result<boolean, AppError>> {
+    const profileResult = await this.userRepo.findGuestById(guestId);
+
+    if (!isOk(profileResult)) {
+      return profileResult;
+    }
+
+    const profile = profileResult.value;
+
+    if (!profile) {
+      return err(databaseError('incrementGuestChallengesAttempted', 'Guest profile not found'));
+    }
+
+    const updateResult = await this.userRepo.updateGuestProfile(guestId, {
+      challenges_attempted: profile.challenges_attempted + 1,
+    });
+
+    if (isOk(updateResult) && updateResult.value) {
+      await this.cacheService.safeInvalidateCache(guestId);
+    }
+
+    return updateResult;
+  }
+
+  /**
+   * Increment guest challenges solved count
+   */
+  async incrementGuestChallengesSolved(guestId: string): Promise<Result<boolean, AppError>> {
+    const profileResult = await this.userRepo.findGuestById(guestId);
+
+    if (!isOk(profileResult)) {
+      return profileResult;
+    }
+
+    const profile = profileResult.value;
+
+    if (!profile) {
+      return err(databaseError('incrementGuestChallengesSolved', 'Guest profile not found'));
+    }
+
+    const updateResult = await this.userRepo.updateGuestProfile(guestId, {
+      challenges_solved: profile.challenges_solved + 1,
+    });
+
+    if (isOk(updateResult) && updateResult.value) {
+      await this.cacheService.safeInvalidateCache(guestId);
+    }
+
+    return updateResult;
   }
 }

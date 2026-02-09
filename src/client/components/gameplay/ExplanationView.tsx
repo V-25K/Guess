@@ -151,7 +151,7 @@ export const ExplanationView: React.FC<ExplanationViewProps> = ({
                   <img
                     src={currentImage?.url}
                     alt={currentImage?.description || `Image ${currentImageIndex + 1}`}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain"
                   />
                   
                   {/* Navigation Arrows overlayed on image */}

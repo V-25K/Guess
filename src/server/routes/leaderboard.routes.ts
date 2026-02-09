@@ -1,16 +1,17 @@
 /**
  * Leaderboard API Routes
- * Handles all leaderboard-related HTTP endpoints
+ * Handles all leaderboard-related HTTP endpoints including guest users
  * 
- * Requirements: 8.2, 8.3
+ * Requirements: 8.2, 8.3, REQ-4.1, REQ-4.2
  */
 
 import { Router, type Request, type Response } from 'express';
 import { context } from '@devvit/web/server';
 import { LeaderboardService } from '../services/leaderboard.service.js';
 import { UserRepository } from '../repositories/user.repository.js';
+import { UserService } from '../services/user.service.js';
 import { validateRequest, type ValidatedRequest } from '../middleware/validation.js';
-import { paginationSchema } from '../validation/schemas.js';
+import { paginationSchema, guestIdSchema } from '../validation/schemas.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { RATE_LIMITS } from '../config/rate-limits.js';
 import { handleResult } from '../utils/result-http.js';
@@ -21,12 +22,20 @@ const router = Router();
 
 /**
  * GET /api/leaderboard
- * Get top players on the leaderboard with user rank and total players
- * Requirements: 8.2, 8.3, 5.1, 5.2
+ * Get top players on the leaderboard with user rank and total players (includes guest users)
+ * Requirements: 8.2, 8.3, 5.1, 5.2, REQ-4.1, REQ-4.2
+ * 
+ * Query Parameters:
+ * - page: Page number (default: 1)
+ * - limit: Items per page (default: 20)
+ * - sortBy: Field to sort by (optional)
+ * - order: Sort direction (default: desc)
+ * - guestId (optional): Guest user ID for guest user rank calculation
  */
 router.get('/', rateLimit(RATE_LIMITS['GET /api/leaderboard']), validateRequest({ query: paginationSchema }), async (req: Request, res: Response) => {
   try {
     const { userId } = context;
+    const guestId = req.query.guestId as string;
 
     // Get validated pagination params
     const { page, limit } = (req as ValidatedRequest<{ query: { page: number; limit: number; sortBy?: string; order: string } }>).validated.query;
@@ -34,10 +43,36 @@ router.get('/', rateLimit(RATE_LIMITS['GET /api/leaderboard']), validateRequest(
     // Initialize services
     const userRepo = new UserRepository(context);
     const leaderboardService = new LeaderboardService(context, userRepo);
+    const userService = new UserService(context, userRepo);
+
+    // Determine effective user ID for rank calculation
+    let effectiveUserId = '';
+    
+    if (guestId) {
+      // Validate guest ID format
+      const guestIdValidation = guestIdSchema.safeParse(guestId);
+      if (!guestIdValidation.success) {
+        const result = err(validationError([{ field: 'guestId', message: 'Invalid guest ID format' }]));
+        return handleResult(result, res);
+      }
+      
+      // Verify guest exists
+      const guestResult = await userService.getGuestProfile(guestId);
+      if (!isOk(guestResult) || !guestResult.value) {
+        const result = err(validationError([{ field: 'guestId', message: 'Guest user not found' }]));
+        return handleResult(result, res);
+      }
+      
+      effectiveUserId = guestId;
+    } else if (userId) {
+      effectiveUserId = userId;
+    }
 
     // Use the paginated service which returns full userRank data
+    // Note: The leaderboard service already includes guest users in the results
+    // since guest users are stored in the same users table with is_guest flag
     const leaderboardResult = await leaderboardService.getLeaderboardWithUserPaginated(
-      userId || '',
+      effectiveUserId,
       limit,
       page - 1 // Service uses 0-indexed pages
     );
@@ -76,24 +111,71 @@ router.get('/', rateLimit(RATE_LIMITS['GET /api/leaderboard']), validateRequest(
 
 /**
  * GET /api/leaderboard/user
- * Get the current user's rank on the leaderboard
- * Requirements: 8.2, 8.3, 5.1, 5.2
+ * Get the current user's rank on the leaderboard (authenticated or guest)
+ * Requirements: 8.2, 8.3, 5.1, 5.2, REQ-4.1, REQ-4.2
+ * 
+ * Query Parameters:
+ * - guestId (optional): Guest user ID for guest user rank
  */
-router.get('/user', rateLimit(RATE_LIMITS['GET /api/leaderboard/user']), async (_req: Request, res: Response) => {
+router.get('/user', rateLimit(RATE_LIMITS['GET /api/leaderboard/user']), async (req: Request, res: Response) => {
   try {
     const { userId } = context;
-
-    // Validate authentication
-    if (!userId) {
-      const result = err(validationError([
-        { field: 'auth', message: 'User ID required' }
-      ]));
-      return handleResult(result, res);
-    }
+    const guestId = req.query.guestId as string;
 
     // Initialize services
     const userRepo = new UserRepository(context);
     const leaderboardService = new LeaderboardService(context, userRepo);
+    const userService = new UserService(context, userRepo);
+
+    // Handle guest user request
+    if (guestId) {
+      // Validate guest ID format
+      const guestIdValidation = guestIdSchema.safeParse(guestId);
+      if (!guestIdValidation.success) {
+        const result = err(validationError([{ field: 'guestId', message: 'Invalid guest ID format' }]));
+        return handleResult(result, res);
+      }
+
+      // Verify guest exists and get profile
+      const guestResult = await userService.getGuestProfile(guestId);
+      if (!isOk(guestResult) || !guestResult.value) {
+        const result = err(validationError([{ field: 'guestId', message: 'Guest user not found' }]));
+        return handleResult(result, res);
+      }
+
+      const guestProfile = guestResult.value;
+
+      // Get guest user rank
+      const rankResult = await userService.getGuestUserRank(guestId);
+      if (!isOk(rankResult)) {
+        return handleResult(rankResult, res);
+      }
+      const rank = rankResult.value;
+
+      if (rank === null) {
+        const result = err(notFoundError('Guest user rank', guestId));
+        return handleResult(result, res);
+      }
+
+      const result = ok({
+        rank,
+        userId: guestProfile.id,
+        username: guestProfile.username,
+        totalPoints: guestProfile.total_points,
+        level: guestProfile.level,
+        challengesSolved: guestProfile.challenges_solved,
+      });
+
+      return handleResult(result, res);
+    }
+
+    // Handle authenticated user request
+    if (!userId) {
+      const result = err(validationError([
+        { field: 'auth', message: 'User ID or guest ID required' }
+      ]));
+      return handleResult(result, res);
+    }
 
     // Get user rank
     const rankResult = await leaderboardService.getUserRank(userId);
